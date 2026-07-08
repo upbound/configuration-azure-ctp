@@ -28,8 +28,11 @@ def add_nodepool_observe(rsp, id_val, location, provider_config, config):
         "spec": {
             "managementPolicies": ["Observe"],
             "forProvider": {
+                # The KubernetesCluster is created inside the AKS XR and named
+                # "<id>-aks" (see configuration-azure-aks). Reference it by that
+                # name to resolve its Azure resource ID for the observe.
                 "kubernetesClusterIdRef": {
-                    "name": id_val
+                    "name": f"{id_val}-aks"
                 }
             },
             "providerConfigRef": {

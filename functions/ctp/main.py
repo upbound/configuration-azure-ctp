@@ -35,7 +35,6 @@ from .prelude import (
     build_manager_args,
     check_license_conflict,
     extract_oidc_info,
-    get_cluster_name,
     get_nodepool_actual_vm_size,
     get_storage_account_id,
     get_workload_identity_client_id,
@@ -69,6 +68,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     provider_config = params.get("providerConfigName", "default")
     version = params.get("version", "1.34")
     nodes = params.get("nodes", {})
+    network_param = params.get("network", {})
     backup = params.get("backup", {"enabled": "no"})
     install_from = backup.get("installFrom")
     license_param = params.get("license")
@@ -92,7 +92,6 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
 
     oidc_issuer_url, _oidc_host = extract_oidc_info(backup, observed_resources)
 
-    cluster_name = get_cluster_name(id_val, observed_resources)
     client_id = get_workload_identity_client_id(observed_resources)
     principal_id = get_workload_identity_principal_id(observed_resources)
     storage_account_id = get_storage_account_id(observed_resources)
@@ -111,20 +110,25 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     mgr_args = build_manager_args(vpa, knative, vpa_ready, knative_fully_ready, features_licensed)
 
     storage_account, container_name = parse_blob_location(backup.get("location", ""))
+    # The backup StorageAccount may live in a different region than the cluster
+    # (cross-region DR). Only the StorageAccount location uses bucket_region;
+    # the Azure blob endpoint is account-based, so nothing else needs it.
+    bucket_region = backup.get("bucketRegion") or location
 
     ng_actual_vm_size = get_nodepool_actual_vm_size(observed_resources)
     ng_size_mismatch = bool(ng_actual_vm_size) and ng_actual_vm_size != nodes.get("vmSize", "")
 
     # --- Compose resources ---
-    add_network_resources(rsp, id_val, location, provider_config, mgmt_policies, config)
+    add_network_resources(rsp, id_val, location, provider_config, mgmt_policies,
+                         network_param, config)
     add_aks_resources(rsp, id_val, location, provider_config, version, nodes,
                      mgmt_policies, config)
     add_uxp_release(rsp, id_val, uxp_version, uxp_deployed, mgr_args, config)
     add_usage_resources(rsp, id_val, config)
 
     if backup.get("enabled") == "yes":
-        add_backup_resources(rsp, id_val, location, provider_config,
-                            storage_account, container_name, cluster_name,
+        add_backup_resources(rsp, id_val, location, bucket_region, provider_config,
+                            storage_account, container_name,
                             backup, uxp_deployed, client_id, config)
 
     if backup.get("enabled") == "yes" and oidc_issuer_url and uxp_deployed:

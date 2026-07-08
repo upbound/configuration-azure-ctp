@@ -46,8 +46,10 @@ def add_workload_identity_resources(rsp, id_val, location, provider_config,
             "forProvider": {
                 "name": f"{id_val}-backup-identity",
                 "location": location,
-                "resourceGroupNameRef": {
-                    "name": id_val
+                "resourceGroupNameSelector": {
+                    "matchLabels": {
+                        "azure.platform.upbound.io/network-id": id_val
+                    }
                 }
             },
             "providerConfigRef": {
@@ -74,8 +76,10 @@ def add_workload_identity_resources(rsp, id_val, location, provider_config,
         },
         "spec": {
             "forProvider": {
-                "resourceGroupNameRef": {
-                    "name": id_val
+                "resourceGroupNameSelector": {
+                    "matchLabels": {
+                        "azure.platform.upbound.io/network-id": id_val
+                    }
                 },
                 "parentIdRef": {
                     "name": f"{id_val}-backup-identity"

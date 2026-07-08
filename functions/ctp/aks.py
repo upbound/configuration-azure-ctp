@@ -1,14 +1,24 @@
-"""02-aks — AKS cluster (KubernetesCluster) + ProviderConfig + connection secret.
+"""02-aks — AKS cluster via the AKS XR.
 
-provider-azure-containerservice exposes `KubernetesCluster` for AKS. We
-enable OIDC issuer + Workload Identity so the backup section can wire up
-federated credentials without rebuilding the cluster. The kubeconfig is
-written to a connection secret that is then referenced by a Helm
-ProviderConfig so UXP can be installed onto the new cluster.
+Composes a single AKS XR from configuration-azure-aks (kind `AKS`,
+azure.platform.upbound.io/v1alpha1) instead of emitting a raw
+KubernetesCluster + ProviderConfigs. The AKS composition:
+  * creates the KubernetesCluster (selecting the ResourceGroup + subnet by the
+    `network-id` label produced by the Network XR), with OIDC issuer +
+    Workload Identity enabled,
+  * writes the kubeconfig connection secret,
+  * creates a Helm and a Kubernetes ProviderConfig BOTH named `<id>`, and
+  * surfaces the OIDC issuer at status.aks.oidcUrl.
+
+Because the ProviderConfigs are named `<id>`, every downstream module here
+(uxp, backup, workload_identity, licensing, knative, runtime_config) keeps
+referencing `providerConfigRef.name = id_val` unchanged.
+
+The ControlPlane XRD keeps the Azure-idiomatic `nodes.vmSize`; it is mapped to
+the AKS XR's `nodes.instanceType` here.
 """
 
 from crossplane.function import resource
-from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
 from .prelude import stamp
 
@@ -16,120 +26,28 @@ from .prelude import stamp
 def add_aks_resources(rsp, id_val, location, provider_config, version, nodes,
                      mgmt_policies, config):
     aks = {
-        "apiVersion": "containerservice.azure.m.upbound.io/v1beta1",
-        "kind": "KubernetesCluster",
+        "apiVersion": "azure.platform.upbound.io/v1alpha1",
+        "kind": "AKS",
         "metadata": {
             "name": id_val,
             "namespace": "default",
             "annotations": {
-                "crossplane.io/composition-resource-name": "aks-cluster"
+                "crossplane.io/composition-resource-name": "aks"
             }
         },
         "spec": {
-            "managementPolicies": mgmt_policies,
-            "forProvider": {
-                "location": location,
-                "kubernetesVersion": version,
-                "dnsPrefix": id_val,
-                "resourceGroupNameRef": {
-                    "name": id_val
+            "parameters": {
+                "id": id_val,
+                "region": location,
+                "version": version,
+                "nodes": {
+                    "count": nodes.get("count", 2),
+                    "instanceType": nodes.get("vmSize", "Standard_D2s_v3")
                 },
-                "defaultNodePool": {
-                    "name": "default",
-                    "nodeCount": nodes.get("count", 2),
-                    "vmSize": nodes.get("vmSize", "Standard_D2s_v3"),
-                    "vnetSubnetIdRef": {
-                        "name": f"{id_val}-aks"
-                    }
-                },
-                "identity": {
-                    "type": "SystemAssigned"
-                },
-                "oidcIssuerEnabled": True,
-                "workloadIdentityEnabled": True,
-                "networkProfile": {
-                    "networkPlugin": "azure",
-                    # serviceCidr and dnsServiceIp must NOT overlap the
-                    # VirtualNetwork address space (10.0.0.0/16). Azure CNI
-                    # defaults serviceCidr to 10.0.0.0/16, which clashes
-                    # exactly with our VNet, so set both explicitly here.
-                    "serviceCidr": "172.16.0.0/16",
-                    "dnsServiceIp": "172.16.0.10"
-                }
-            },
-            "writeConnectionSecretToRef": {
-                "name": f"{id_val}-aks-kubeconfig"
-            },
-            "providerConfigRef": {
-                "name": provider_config,
-                "kind": "ClusterProviderConfig"
+                "managementPolicies": mgmt_policies,
+                "providerConfigName": provider_config
             }
         }
     }
-    stamp(aks, config, azure_tags=True)
-    resource.update(rsp.desired.resources["aks-cluster"], aks)
-
-    # Helm ProviderConfig pointed at the AKS kubeconfig connection secret, so
-    # the UXP Helm Release in uxp.py can target this new cluster. Mirrors the
-    # pattern used by configuration-aws-eks's EKS XR.
-    helm_pc = {
-        "apiVersion": "helm.m.crossplane.io/v1beta1",
-        "kind": "ProviderConfig",
-        "metadata": {
-            "name": id_val,
-            "namespace": "default",
-            "annotations": {
-                "crossplane.io/composition-resource-name": "helm-provider-config",
-                # ProviderConfigs have no native Ready condition — stamp
-                # them ready so function-auto-ready aggregates correctly.
-                "crossplane.io/ready": "True"
-            }
-        },
-        "spec": {
-            "credentials": {
-                "source": "Secret",
-                "secretRef": {
-                    "name": f"{id_val}-aks-kubeconfig",
-                    "namespace": "default",
-                    "key": "kubeconfig"
-                }
-            }
-        }
-    }
-    stamp(helm_pc, config)
-    resource.update(rsp.desired.resources["helm-provider-config"], helm_pc)
-    # ProviderConfigs have no native Ready condition. Set the function's
-    # protobuf-level Ready=TRUE directly so the composite controller doesn't
-    # treat them as unready. The annotation alone isn't enough — Crossplane's
-    # composite aggregation reads this field from each pipeline function's
-    # response.
-    rsp.desired.resources["helm-provider-config"].ready = fnv1.Ready.READY_TRUE
-
-    # Matching Kubernetes ProviderConfig so provider-kubernetes Object
-    # resources (BackupConfig, RBAC, license, knative CR, runtime config, …)
-    # target the new cluster.
-    kubernetes_pc = {
-        "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-        "kind": "ProviderConfig",
-        "metadata": {
-            "name": id_val,
-            "namespace": "default",
-            "annotations": {
-                "crossplane.io/composition-resource-name": "kubernetes-provider-config",
-                "crossplane.io/ready": "True"
-            }
-        },
-        "spec": {
-            "credentials": {
-                "source": "Secret",
-                "secretRef": {
-                    "name": f"{id_val}-aks-kubeconfig",
-                    "namespace": "default",
-                    "key": "kubeconfig"
-                }
-            }
-        }
-    }
-    stamp(kubernetes_pc, config)
-    resource.update(rsp.desired.resources["kubernetes-provider-config"], kubernetes_pc)
-    rsp.desired.resources["kubernetes-provider-config"].ready = fnv1.Ready.READY_TRUE
+    stamp(aks, config)
+    resource.update(rsp.desired.resources["aks"], aks)

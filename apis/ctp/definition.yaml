@@ -36,14 +36,14 @@ spec:
                     default: default
                   version:
                     description: >-
-                      Kubernetes version for the AKS cluster. Standard-support
-                      versions only; 1.31 and earlier require AKS Long-Term
-                      Support (Premium tier) and are not enumerated here. Run
-                      `az aks get-versions --location <loc> -o table` to check
-                      what's currently available in your target region.
+                      Kubernetes version for the AKS cluster. Constrained to the
+                      range the underlying configuration-azure-aks AKS XRD
+                      accepts (1.32-1.34); 1.35 requires bumping that config's
+                      enum first. 1.31 and earlier require AKS Long-Term Support
+                      (Premium tier). Run `az aks get-versions --location <loc>
+                      -o table` to check what's available in your target region.
                     type: string
                     enum:
-                    - "1.35"
                     - "1.34"
                     - "1.33"
                     - "1.32"
@@ -62,6 +62,23 @@ spec:
                     required:
                     - count
                     - vmSize
+                  network:
+                    type: object
+                    description: >-
+                      Virtual network topology for the control plane. Optional;
+                      values are passed through to the underlying
+                      configuration-azure-network Network XR. Azure AKS spreads
+                      nodes across availability zones at the node-pool level, so
+                      a single general subnet is used (no per-AZ subnets).
+                    properties:
+                      addressRange:
+                        type: string
+                        description: CIDR block for the virtual network.
+                        default: "10.0.0.0/16"
+                      generalSubnetRange:
+                        type: string
+                        description: CIDR block for the general (AKS) subnet.
+                        default: "10.0.1.0/24"
                   uxp:
                     type: object
                     description: UXP installation configuration.
@@ -88,6 +105,13 @@ spec:
                           "<storage-account-name>/<container-name>". The storage account and
                           container are created if missing and never deleted by Crossplane.
                         pattern: '^[a-z0-9]+/[a-z0-9-]+$'
+                      bucketRegion:
+                        type: string
+                        description: >-
+                          Azure region for the backup storage account. Defaults to the
+                          control plane's location. Set to a different region than the cluster
+                          for cross-region disaster recovery, so backups survive a full outage
+                          of the cluster's region.
                       schedule:
                         type: string
                         description: >-
