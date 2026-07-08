@@ -199,12 +199,12 @@ spec:
                     items:
                       type: string
                       enum:
-                        - "*"
-                        - Create
-                        - Observe
-                        - Update
-                        - Delete
-                        - LateInitialize
+                      - "*"
+                      - Create
+                      - Observe
+                      - Update
+                      - Delete
+                      - LateInitialize
                     default:
                     - "*"
                 required:

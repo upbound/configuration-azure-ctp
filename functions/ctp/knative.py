@@ -44,6 +44,7 @@ def add_knative_resources(rsp, id_val, certmanager_ready, knative_op_ready,
                 "chart": {
                     "name": "cert-manager",
                     "repository": "https://charts.jetstack.io",
+                    # renovate: datasource=helm depName=cert-manager registryUrl=https://charts.jetstack.io
                     "version": "v1.16.3"
                 },
                 "namespace": "cert-manager",
@@ -92,6 +93,7 @@ def add_knative_resources(rsp, id_val, certmanager_ready, knative_op_ready,
                 "chart": {
                     "name": "knative-operator",
                     "repository": "https://knative.github.io/operator",
+                    # renovate: datasource=helm depName=knative-operator registryUrl=https://knative.github.io/operator
                     "version": "v1.21.1"
                 },
                 "namespace": "default",
