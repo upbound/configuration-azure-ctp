@@ -1,0 +1,34 @@
+# Azure ProviderConfig using a generic OIDC token file. Use this when the
+# upper (management) cluster itself runs on a Kubernetes distribution that
+# already provides projected service-account tokens — for example a
+# self-hosted UXP on AKS where you have wired Workload Identity for the
+# provider pods.
+#
+# Prerequisites:
+#   1. The cluster running this provider must be configured with an OIDC
+#      issuer that Azure AD trusts (AKS oidcIssuerProfile, EKS pod-identity
+#      federation, GKE workload-identity-federation, etc.).
+#   2. A UserAssignedIdentity in Azure with a FederatedIdentityCredential
+#      whose issuer matches that cluster's OIDC issuer and whose subject is
+#      the provider's projected ServiceAccount
+#      (e.g. system:serviceaccount:upbound-system:upbound-provider-azure-network).
+#   3. The provider pod must mount the projected SA token at
+#      oidcTokenFilePath (typically /var/run/secrets/azure/tokens/azure-identity-token).
+#   4. The provider pod must carry the label `azure.workload.identity/use: "true"`
+#      and the SA must have the annotation `azure.workload.identity/client-id`
+#      set to the UserAssignedIdentity's clientID.
+#
+# Note: this is NOT for the AKS cluster created by this configuration (that
+# cluster is the workload cluster — UXP runs on the upper cluster). Use this
+# manifest on the upper management cluster.
+apiVersion: azure.m.upbound.io/v1beta1
+kind: ClusterProviderConfig
+metadata:
+  name: default
+spec:
+  credentials:
+    source: OIDCTokenFile
+  clientID: REPLACE-WITH-USER-ASSIGNED-IDENTITY-CLIENT-ID
+  tenantID: REPLACE-WITH-AZURE-AD-TENANT-ID
+  subscriptionID: REPLACE-WITH-AZURE-SUBSCRIPTION-ID
+  oidcTokenFilePath: /var/run/secrets/azure/tokens/azure-identity-token

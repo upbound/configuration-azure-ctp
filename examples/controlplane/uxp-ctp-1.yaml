@@ -1,0 +1,24 @@
+apiVersion: azure.platform.upbound.io/v1alpha1
+kind: ControlPlane
+metadata:
+  name: uxp-ctp-1
+spec:
+  parameters:
+    id: uxp-ctp-1
+    location: westus2
+    version: "1.34"
+    nodes:
+      count: 5
+      vmSize: Standard_D4s_v3
+    backup:
+      enabled: "yes"
+      location: uxpctp1backup/uxp-ctp-1
+      schedule: "*/15 * * * *"
+    license:
+      secretRef:
+        name: uxp-license
+        namespace: default
+    knative:
+      enabled: "yes"
+    providerVerticalPodAutoscaling:
+      enabled: "no"

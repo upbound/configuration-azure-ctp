@@ -1,0 +1,31 @@
+# Azure ProviderConfig using Upbound's federated-identity broker (OIDC).
+# This is the recommended option for control planes hosted in Upbound Cloud
+# Spaces: no long-lived secrets, credentials are short-lived OIDC tokens
+# minted by Upbound and exchanged for Azure AD tokens via a federated
+# credential on a UserAssignedIdentity.
+#
+# Prerequisites in Azure AD (one-time setup per Upbound org):
+#   1. Create a UserAssignedIdentity (or App Registration) in the target
+#      subscription.
+#   2. Grant it the roles it needs (Contributor on the subscription, or a
+#      narrower scope).
+#   3. Add a Federated Credential on the identity whose:
+#        Issuer  = https://proidc.upbound.io   (Upbound's OIDC issuer)
+#        Subject = system:serviceaccount:upbound-system:provider-azure-*
+#                  (or the specific provider service account; see Upbound docs)
+#        Audience = api://AzureADTokenExchange
+#   4. Note the identity's clientID and the tenantID/subscriptionID of the
+#      target subscription — they go in this manifest.
+#
+# Documentation:
+#   https://docs.upbound.io/concepts/control-planes/configuration/managed-identities/
+apiVersion: azure.m.upbound.io/v1beta1
+kind: ClusterProviderConfig
+metadata:
+  name: default
+spec:
+  credentials:
+    source: Upbound
+  clientID: REPLACE-WITH-USER-ASSIGNED-IDENTITY-CLIENT-ID
+  tenantID: REPLACE-WITH-AZURE-AD-TENANT-ID
+  subscriptionID: REPLACE-WITH-AZURE-SUBSCRIPTION-ID

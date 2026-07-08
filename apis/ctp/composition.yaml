@@ -1,0 +1,41 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  labels:
+    provider: azure
+  name: controlplane.azure.platform.upbound.io
+spec:
+  compositeTypeRef:
+    apiVersion: azure.platform.upbound.io/v1alpha1
+    kind: ControlPlane
+  mode: Pipeline
+  pipeline:
+  - functionRef:
+      name: crossplane-contrib-function-extra-resources
+    step: fetch-control-planes
+    input:
+      apiVersion: extra-resources.fn.crossplane.io/v1beta1
+      kind: Input
+      spec:
+        extraResources:
+        - apiVersion: azure.platform.upbound.io/v1alpha1
+          kind: ControlPlane
+          into: allControlPlanes
+          type: Selector
+          selector:
+            maxMatch: 100
+            minMatch: 0
+  - functionRef:
+      name: upbound-configuration-azure-ctpctp
+    step: ctp
+  # function-auto-ready aggregates each composed resource's readiness into the
+  # composite Ready condition. For Helm Releases that hit the provider-helm
+  # v1.2.2 stale-Ready bug (Release reaches state=deployed but Ready stays
+  # Unavailable), our Python composition function adds readiness annotations
+  # when atProvider.state=="deployed", which gets translated into a ReadyTrue
+  # decision in the gRPC response. function-auto-ready respects that explicit
+  # decision and skips its built-in Ready-condition check for those resources,
+  # sidestepping the bug without falsifying state.
+  - functionRef:
+      name: crossplane-contrib-function-auto-ready
+    step: auto-ready

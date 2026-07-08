@@ -1,0 +1,158 @@
+"""
+Composition function for Azure AKS Control Plane with UXP backup support.
+
+Azure analog of configuration-aws-ctp. Each section below is implemented in a
+sibling module:
+
+  prelude.py            (00) shared extractors and helpers
+  network.py            (01) ResourceGroup + VirtualNetwork + Subnet
+  aks.py                (02) KubernetesCluster + Helm/Kubernetes ProviderConfigs
+  uxp.py                (03) UXP v2 Helm Release
+  usages.py             (04) deletion-order Usage guards
+  backup.py             (05) StorageAccount, Container, observe AKS, BackupConfig, RBAC, Schedule
+  workload_identity.py  (06) UserAssignedIdentity, FederatedIdentityCredential,
+                              RoleAssignment, SA annotation, controller restart, restore
+  licensing.py          (07) License Secret + License CR
+  vpa.py                (08) VPA + metrics-server Helm Releases
+  knative.py            (09) cert-manager + knative-operator + serving CR
+  runtime_config.py     (10) UpboundRuntimeConfig (ProviderVPA + Knative caps)
+  nodepool_observe.py   (11) Observe-only KubernetesClusterNodePool for vmSize drift
+  status.py             (99) XR status writeback + ClaimConditions
+"""
+
+from datetime import datetime, timezone
+
+from crossplane.function import resource
+from crossplane.function.proto.v1 import run_function_pb2 as fnv1
+
+from .aks import add_aks_resources
+from .backup import add_backup_resources
+from .knative import add_knative_resources
+from .licensing import add_license_resources
+from .network import add_network_resources
+from .nodepool_observe import add_nodepool_observe
+from .prelude import (
+    build_manager_args,
+    check_license_conflict,
+    extract_oidc_info,
+    get_cluster_name,
+    get_nodepool_actual_vm_size,
+    get_storage_account_id,
+    get_workload_identity_client_id,
+    get_workload_identity_principal_id,
+    is_knative_serving_ready,
+    is_license_applied,
+    is_release_deployed,
+    parse_blob_location,
+)
+from .runtime_config import add_runtime_config
+from .status import update_status
+from .usages import add_usage_resources
+from .uxp import add_uxp_release
+from .vpa import add_vpa_resources
+from .workload_identity import add_workload_identity_resources
+
+
+def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
+    """Main composition function entry point."""
+    config = {
+        "last_reconcile_date": datetime.now(timezone.utc).strftime(
+            "%A %Y-%m-%d %H:%M:%S UTC"
+        ),
+    }
+
+    xr = resource.struct_to_dict(req.observed.composite.resource)
+    params = xr.get("spec", {}).get("parameters", {})
+
+    id_val = params.get("id", "")
+    location = params.get("location", "")
+    provider_config = params.get("providerConfigName", "default")
+    version = params.get("version", "1.34")
+    nodes = params.get("nodes", {})
+    backup = params.get("backup", {"enabled": "no"})
+    install_from = backup.get("installFrom")
+    license_param = params.get("license")
+    mgmt_policies = params.get("managementPolicies", ["*"])
+    uxp_version = params.get("uxp", {}).get("version", "2.2.1-up.1")
+    vpa = params.get("providerVerticalPodAutoscaling")
+    knative = params.get("knative")
+
+    # function-extra-resources delivers `allControlPlanes` via the
+    # apiextensions.crossplane.io/extra-resources context key.
+    context_dict = resource.struct_to_dict(req.context)
+    extra_ctx = context_dict.get("apiextensions.crossplane.io/extra-resources", {})
+    all_ctps = extra_ctx.get("allControlPlanes", [])
+
+    license_conflict = check_license_conflict(id_val, license_param, all_ctps)
+
+    observed_resources = {
+        name: resource.struct_to_dict(res.resource)
+        for name, res in req.observed.resources.items()
+    }
+
+    oidc_issuer_url, _oidc_host = extract_oidc_info(backup, observed_resources)
+
+    cluster_name = get_cluster_name(id_val, observed_resources)
+    client_id = get_workload_identity_client_id(observed_resources)
+    principal_id = get_workload_identity_principal_id(observed_resources)
+    storage_account_id = get_storage_account_id(observed_resources)
+
+    uxp_deployed = is_release_deployed(observed_resources, "uxp-release")
+    vpa_ready = is_release_deployed(observed_resources, "vpa-release")
+    certmanager_ready = is_release_deployed(observed_resources, "knative-certmanager-release")
+    knative_op_ready = is_release_deployed(observed_resources, "knative-operator-release")
+    knative_deps_ready = certmanager_ready and knative_op_ready
+    knative_serving_ready = is_knative_serving_ready(observed_resources)
+    knative_fully_ready = knative_deps_ready and knative_serving_ready
+
+    license_applied = is_license_applied(observed_resources)
+    features_licensed = not license_param or license_applied
+
+    mgr_args = build_manager_args(vpa, knative, vpa_ready, knative_fully_ready, features_licensed)
+
+    storage_account, container_name = parse_blob_location(backup.get("location", ""))
+
+    ng_actual_vm_size = get_nodepool_actual_vm_size(observed_resources)
+    ng_size_mismatch = bool(ng_actual_vm_size) and ng_actual_vm_size != nodes.get("vmSize", "")
+
+    # --- Compose resources ---
+    add_network_resources(rsp, id_val, location, provider_config, mgmt_policies, config)
+    add_aks_resources(rsp, id_val, location, provider_config, version, nodes,
+                     mgmt_policies, config)
+    add_uxp_release(rsp, id_val, uxp_version, uxp_deployed, mgr_args, config)
+    add_usage_resources(rsp, id_val, config)
+
+    if backup.get("enabled") == "yes":
+        add_backup_resources(rsp, id_val, location, provider_config,
+                            storage_account, container_name, cluster_name,
+                            backup, uxp_deployed, client_id, config)
+
+    if backup.get("enabled") == "yes" and oidc_issuer_url and uxp_deployed:
+        add_workload_identity_resources(rsp, id_val, location, provider_config,
+                                       oidc_issuer_url, storage_account,
+                                       container_name, observed_resources,
+                                       install_from, client_id, principal_id,
+                                       storage_account_id, config)
+
+    if license_param and not license_conflict:
+        add_license_resources(rsp, id_val, license_param, config)
+
+    if vpa and vpa.get("enabled") == "yes" and features_licensed:
+        add_vpa_resources(rsp, id_val, vpa, vpa_ready, config)
+
+    if knative and knative.get("enabled") == "yes" and features_licensed:
+        add_knative_resources(rsp, id_val, certmanager_ready, knative_op_ready,
+                             knative_deps_ready, knative_serving_ready,
+                             observed_resources, config)
+
+    if (vpa and vpa.get("enabled") == "yes" and vpa_ready) or \
+       (knative and knative.get("enabled") == "yes" and knative_fully_ready):
+        add_runtime_config(rsp, id_val, vpa, knative, vpa_ready,
+                          knative_fully_ready, config)
+
+    add_nodepool_observe(rsp, id_val, location, provider_config, config)
+
+    update_status(rsp, id_val, params, uxp_version, uxp_deployed, backup,
+                 client_id, backup.get("location", ""), observed_resources,
+                 nodes, ng_actual_vm_size, ng_size_mismatch, vpa, knative,
+                 license_conflict, config)

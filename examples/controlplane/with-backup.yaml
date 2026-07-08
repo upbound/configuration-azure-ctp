@@ -1,0 +1,40 @@
+# Pre-requisite: create the UXP license secret on the management cluster
+# in the crossplane-system namespace. Either of these works:
+#   up uxp license apply <path-to-license.json>          # key=license.json
+#   kubectl create secret generic uxp-license \           # key=license.json
+#     --from-file=license.json=<path-to-license.json> \
+#     -n crossplane-system
+# The composition reads the license.json key directly via bracket-notation
+# field path; no manual re-keying needed.
+#
+# The backup.location is "<storage-account>/<container>". The storage account
+# name must be globally unique within Azure and follow naming rules: 3–24
+# characters, lowercase letters and digits only.
+apiVersion: azure.platform.upbound.io/v1alpha1
+kind: ControlPlane
+metadata:
+  name: prod-control-plane
+spec:
+  parameters:
+    id: prod-control-plane
+    location: eastus
+    version: "1.34"
+    nodes:
+      count: 3
+      vmSize: Standard_D4s_v3
+    backup:
+      enabled: "yes"
+      location: prodcpbackup001/uxp-backups
+      schedule: "0 */2 * * *"
+    knative:
+      enabled: "yes"
+    providerVerticalPodAutoscaling:
+      enabled: "yes"
+      minCpu: "100m"
+      maxCpu: "2"
+      minMemory: "100Mi"
+      maxMemory: "4000Mi"
+    license:
+      secretRef:
+        name: uxp-license
+        namespace: crossplane-system

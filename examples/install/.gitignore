@@ -1,0 +1,11 @@
+# DO NOT commit Azure service-principal credentials.
+# The .example template is fine to commit; the filled-in one is not.
+azure-credentials.yaml
+
+# If you ever fill in real clientID/tenantID/subscriptionID values into the
+# OIDC or Upbound ProviderConfig templates, rename or copy them aside before
+# committing — values aren't strictly "secrets" but they identify the
+# subscription/tenant/identity and shouldn't appear in public repos.
+# Uncomment these if you keep filled-in copies in this directory:
+# azure-providerconfig-oidc.filled.yaml
+# azure-providerconfig-upbound.filled.yaml
