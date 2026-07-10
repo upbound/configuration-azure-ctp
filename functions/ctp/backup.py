@@ -22,9 +22,13 @@ from crossplane.function import resource
 from .prelude import stamp
 
 
-def add_backup_resources(rsp, id_val, location, provider_config,
-                        storage_account, container_name, cluster_name,
+def add_backup_resources(rsp, id_val, location, bucket_region, provider_config,
+                        storage_account, container_name,
                         backup, uxp_deployed, client_id, config):
+    # The StorageAccount lives in the ResourceGroup owned by the Network XR,
+    # selected by the network-id label. bucket_region defaults to the cluster
+    # location but may differ for cross-region DR (an Azure resource may sit in
+    # a different region than its resource group).
     storage_acct = {
         "apiVersion": "storage.azure.m.upbound.io/v1beta1",
         "kind": "Account",
@@ -39,9 +43,11 @@ def add_backup_resources(rsp, id_val, location, provider_config,
         "spec": {
             "managementPolicies": ["Observe", "Create", "Update", "LateInitialize"],
             "forProvider": {
-                "location": location,
-                "resourceGroupNameRef": {
-                    "name": id_val
+                "location": bucket_region,
+                "resourceGroupNameSelector": {
+                    "matchLabels": {
+                        "azure.platform.upbound.io/network-id": id_val
+                    }
                 },
                 "accountTier": "Standard",
                 "accountReplicationType": "LRS",
@@ -84,37 +90,6 @@ def add_backup_resources(rsp, id_val, location, provider_config,
     # Container does not accept Azure tags.
     stamp(container, config)
     resource.update(rsp.desired.resources["backup-container"], container)
-
-    # Observe-only AKS cluster — sources oidcIssuerUrl for Workload Identity
-    # federation. Falls back to id_val until the AKS XR reports the real
-    # cluster name.
-    cluster_observe = {
-        "apiVersion": "containerservice.azure.m.upbound.io/v1beta1",
-        "kind": "KubernetesCluster",
-        "metadata": {
-            "name": f"{id_val}-observe",
-            "namespace": "default",
-            "annotations": {
-                "crossplane.io/composition-resource-name": "aks-cluster-observe",
-                "crossplane.io/external-name": cluster_name
-            }
-        },
-        "spec": {
-            "managementPolicies": ["Observe"],
-            "forProvider": {
-                "location": location,
-                "resourceGroupNameRef": {
-                    "name": id_val
-                }
-            },
-            "providerConfigRef": {
-                "name": provider_config,
-                "kind": "ClusterProviderConfig"
-            }
-        }
-    }
-    stamp(cluster_observe, config)
-    resource.update(rsp.desired.resources["aks-cluster-observe"], cluster_observe)
 
     # BackupConfig — the thanos objstore library requires config.endpoint;
     # without it the Azure blob client cannot resolve the storage account.

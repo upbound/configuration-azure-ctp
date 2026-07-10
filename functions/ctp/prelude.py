@@ -56,37 +56,24 @@ def check_license_conflict(id_val: str, license_param: Optional[Dict],
 
 
 def extract_oidc_info(backup: Dict, observed: Dict) -> tuple:
-    """Extract (oidc_issuer_url, oidc_host) from the observed AKS cluster.
+    """Extract (oidc_issuer_url, oidc_host) from the composed AKS XR.
 
-    AKS surfaces the workload-identity OIDC issuer at
-    status.atProvider.oidcIssuerUrl when oidcIssuerEnabled=true on the
-    cluster. Returns empty strings until the observe-only AKS cluster syncs.
+    configuration-azure-aks surfaces the workload-identity OIDC issuer at
+    status.aks.oidcUrl (populated from the KubernetesCluster's
+    oidcIssuerUrl). Returns empty strings until the AKS XR reports it.
     """
     if backup.get("enabled") != "yes":
         return "", ""
 
-    obs = observed.get("aks-cluster-observe")
+    obs = observed.get("aks")
     if not obs:
         return "", ""
 
     res = obs.resource if hasattr(obs, "resource") else obs
-    at_provider = res.get("status", {}).get("atProvider", {})
-
-    issuer_url = at_provider.get("oidcIssuerUrl", "")
+    issuer_url = res.get("status", {}).get("aks", {}).get("oidcUrl", "")
     issuer_host = issuer_url.replace("https://", "").rstrip("/") if issuer_url else ""
 
     return issuer_url, issuer_host
-
-
-def get_cluster_name(id_val: str, observed: Dict) -> str:
-    """Return the actual AKS cluster name from the observed AKS managed
-    resource; fall back to id_val before the resource is created."""
-    aks = observed.get("aks-cluster")
-    if not aks:
-        return id_val
-
-    res = aks.resource if hasattr(aks, "resource") else aks
-    return res.get("metadata", {}).get("name", id_val) or id_val
 
 
 def get_workload_identity_client_id(observed: Dict) -> str:
@@ -197,11 +184,24 @@ def parse_blob_location(location: str) -> tuple:
 
 
 def get_nodepool_actual_vm_size(observed: Dict) -> str:
-    """Return the vmSize reported by the observe-only KubernetesClusterNodePool,
-    or "" when the observe has not yet synced."""
-    obs = observed.get("nodepool-observe")
+    """Return the running default-node-pool vmSize from the composed AKS XR's
+    status.aks.nodes.vmSize, or "" until the XR surfaces it
+    (configuration-azure-aks v2.0.1+)."""
+    obs = observed.get("aks")
     if not obs:
         return ""
 
     res = obs.resource if hasattr(obs, "resource") else obs
-    return res.get("status", {}).get("atProvider", {}).get("vmSize", "")
+    return res.get("status", {}).get("aks", {}).get("nodes", {}).get("vmSize", "")
+
+
+def get_cluster_name(observed: Dict) -> str:
+    """Return the AKS cluster name from the composed AKS XR's
+    status.aks.clusterName, or "" until the XR surfaces it
+    (configuration-azure-aks v2.0.1+)."""
+    obs = observed.get("aks")
+    if not obs:
+        return ""
+
+    res = obs.resource if hasattr(obs, "resource") else obs
+    return res.get("status", {}).get("aks", {}).get("clusterName", "")

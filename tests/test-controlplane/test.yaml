@@ -1,6 +1,7 @@
 # Composition tests for the Azure ControlPlane Python composition.
 # Each test renders the composition against a ControlPlane XR fixture and
-# asserts that specific composed resources are produced.
+# asserts that specific composed resources are produced. The cluster/network
+# are composed as AKS + Network XRs (configuration-azure-aks / -network).
 ---
 apiVersion: meta.dev.upbound.io/v1alpha1
 kind: CompositionTest
@@ -25,22 +26,26 @@ spec:
           count: 2
           vmSize: Standard_D2s_v3
   assertResources:
-  - apiVersion: azure.m.upbound.io/v1beta1
-    kind: ResourceGroup
+  - apiVersion: azure.platform.upbound.io/v1alpha1
+    kind: Network
     metadata:
       name: test-cp
-  - apiVersion: network.azure.m.upbound.io/v1beta1
-    kind: VirtualNetwork
+    spec:
+      parameters:
+        region: eastus
+        addressRange: 10.224.0.0/16
+        generalSubnetRange: 10.224.0.0/24
+  - apiVersion: azure.platform.upbound.io/v1alpha1
+    kind: AKS
     metadata:
       name: test-cp
-  - apiVersion: network.azure.m.upbound.io/v1beta1
-    kind: Subnet
-    metadata:
-      name: test-cp-aks
-  - apiVersion: containerservice.azure.m.upbound.io/v1beta1
-    kind: KubernetesCluster
-    metadata:
-      name: test-cp
+    spec:
+      parameters:
+        region: eastus
+        version: "1.34"
+        nodes:
+          count: 2
+          instanceType: Standard_D2s_v3
   - apiVersion: helm.m.crossplane.io/v1beta1
     kind: Release
     metadata:
@@ -62,18 +67,55 @@ spec:
       name: test-cp-usage-release-aks
     spec:
       of:
-        kind: KubernetesCluster
+        kind: AKS
       by:
         kind: Release
   - apiVersion: protection.crossplane.io/v1beta1
     kind: Usage
     metadata:
-      name: test-cp-usage-vnet-rg
+      name: test-cp-usage-aks-network
     spec:
       of:
-        kind: ResourceGroup
+        kind: Network
       by:
-        kind: VirtualNetwork
+        kind: AKS
+---
+apiVersion: meta.dev.upbound.io/v1alpha1
+kind: CompositionTest
+metadata:
+  name: network-custom
+spec:
+  compositionPath: apis/ctp/composition.yaml
+  xrdPath: apis/ctp/definition.yaml
+  validate: true
+  timeoutSeconds: 60
+  xr:
+    apiVersion: azure.platform.upbound.io/v1alpha1
+    kind: ControlPlane
+    metadata:
+      name: test-cp
+    spec:
+      parameters:
+        id: test-cp
+        location: westeurope
+        version: "1.34"
+        nodes:
+          count: 2
+          vmSize: Standard_D2s_v3
+        network:
+          addressRange: 172.20.0.0/16
+          generalSubnetRange: 172.20.1.0/24
+  assertResources:
+  # Custom network params pass straight through to the Network XR.
+  - apiVersion: azure.platform.upbound.io/v1alpha1
+    kind: Network
+    metadata:
+      name: test-cp
+    spec:
+      parameters:
+        region: westeurope
+        addressRange: 172.20.0.0/16
+        generalSubnetRange: 172.20.1.0/24
 ---
 apiVersion: meta.dev.upbound.io/v1alpha1
 kind: CompositionTest
@@ -112,10 +154,6 @@ spec:
     kind: Container
     metadata:
       name: test-cp-backup-container
-  - apiVersion: containerservice.azure.m.upbound.io/v1beta1
-    kind: KubernetesCluster
-    metadata:
-      name: test-cp-observe
   - apiVersion: kubernetes.m.crossplane.io/v1alpha1
     kind: Object
     metadata:
@@ -136,6 +174,50 @@ spec:
     kind: Object
     metadata:
       name: test-cp-backup-rbac-binding
+---
+apiVersion: meta.dev.upbound.io/v1alpha1
+kind: CompositionTest
+metadata:
+  name: backup-cross-region
+spec:
+  compositionPath: apis/ctp/composition.yaml
+  xrdPath: apis/ctp/definition.yaml
+  validate: true
+  timeoutSeconds: 60
+  xr:
+    apiVersion: azure.platform.upbound.io/v1alpha1
+    kind: ControlPlane
+    metadata:
+      name: test-cp
+    spec:
+      parameters:
+        id: test-cp
+        location: eastus
+        version: "1.34"
+        nodes:
+          count: 2
+          vmSize: Standard_D2s_v3
+        backup:
+          enabled: "yes"
+          location: mybackup001/uxp-backups
+          bucketRegion: westus2
+  assertResources:
+  # Storage account lives in the DR region (bucketRegion), not the cluster region.
+  - apiVersion: storage.azure.m.upbound.io/v1beta1
+    kind: Account
+    metadata:
+      name: mybackup001
+    spec:
+      forProvider:
+        location: westus2
+  # The cluster/network stay in the control plane location.
+  - apiVersion: azure.platform.upbound.io/v1alpha1
+    kind: Network
+    metadata:
+      name: test-cp
+    spec:
+      parameters:
+        region: eastus
 ---
 apiVersion: meta.dev.upbound.io/v1alpha1
 kind: CompositionTest
@@ -203,12 +285,12 @@ spec:
           count: 2
           vmSize: Standard_D2s_v3
   assertResources:
-  - apiVersion: azure.m.upbound.io/v1beta1
-    kind: ResourceGroup
+  - apiVersion: azure.platform.upbound.io/v1alpha1
+    kind: Network
     metadata:
       name: test-cp
-  - apiVersion: containerservice.azure.m.upbound.io/v1beta1
-    kind: KubernetesCluster
+  - apiVersion: azure.platform.upbound.io/v1alpha1
+    kind: AKS
     metadata:
       name: test-cp
   - apiVersion: helm.m.crossplane.io/v1beta1
@@ -396,19 +478,20 @@ spec:
           enabled: "yes"
           location: mybackup001/uxp-backups
   observedResources:
-  - apiVersion: containerservice.azure.m.upbound.io/v1beta1
-    kind: KubernetesCluster
+  # The OIDC issuer now comes from the composed AKS XR's status.aks.oidcUrl.
+  - apiVersion: azure.platform.upbound.io/v1alpha1
+    kind: AKS
     metadata:
-      name: test-cp-observe
+      name: test-cp
       namespace: default
       annotations:
-        crossplane.io/composition-resource-name: aks-cluster-observe
-    spec:
-      forProvider:
-        location: eastus
+        crossplane.io/composition-resource-name: aks
     status:
-      atProvider:
-        oidcIssuerUrl: https://eastus.oic.prod-aks.azure.com/00000000-0000-0000-0000-000000000000/abcdef/
+      aks:
+        oidcUrl: https://eastus.oic.prod-aks.azure.com/00000000-0000-0000-0000-000000000000/abcdef/
+        clusterName: test-cp-aks
+        nodes:
+          vmSize: Standard_D2s_v3
   - apiVersion: helm.m.crossplane.io/v1beta1
     kind: Release
     metadata:
@@ -699,4 +782,107 @@ spec:
             objectStorage:
               bucket: uxp-backups
               config:
-                endpoint: newcpbackup.blob.core.windows.net
+                storage_account: newcpbackup
+---
+apiVersion: meta.dev.upbound.io/v1alpha1
+kind: CompositionTest
+metadata:
+  name: availability-zones
+spec:
+  compositionPath: apis/ctp/composition.yaml
+  xrdPath: apis/ctp/definition.yaml
+  validate: true
+  timeoutSeconds: 60
+  xr:
+    apiVersion: azure.platform.upbound.io/v1alpha1
+    kind: ControlPlane
+    metadata:
+      name: test-cp
+    spec:
+      parameters:
+        id: test-cp
+        location: eastus
+        version: "1.35"
+        nodes:
+          count: 3
+          vmSize: Standard_D2s_v3
+          availabilityZones: ["1", "2", "3"]
+  assertResources:
+  # availabilityZones and the 1.35 version pass straight through to the AKS XR.
+  - apiVersion: azure.platform.upbound.io/v1alpha1
+    kind: AKS
+    metadata:
+      name: test-cp
+    spec:
+      parameters:
+        region: eastus
+        version: "1.35"
+        nodes:
+          count: 3
+          instanceType: Standard_D2s_v3
+          availabilityZones: ["1", "2", "3"]
+---
+apiVersion: meta.dev.upbound.io/v1alpha1
+kind: CompositionTest
+metadata:
+  name: vm-size-drift
+spec:
+  compositionPath: apis/ctp/composition.yaml
+  xrdPath: apis/ctp/definition.yaml
+  validate: true
+  timeoutSeconds: 60
+  xr:
+    apiVersion: azure.platform.upbound.io/v1alpha1
+    kind: ControlPlane
+    metadata:
+      name: test-cp
+    spec:
+      parameters:
+        id: test-cp
+        location: eastus
+        version: "1.34"
+        nodes:
+          count: 2
+          vmSize: Standard_D2s_v3
+  observedResources:
+  # Running node-pool vmSize (Standard_D4s_v3) differs from the desired
+  # Standard_D2s_v3. It is read from the composed AKS XR's status.aks.nodes,
+  # driving the NodePoolVmSizeImmutable condition and status.controlplane.nodes.
+  # currentVmSize. clusterName is surfaced from status.aks.clusterName.
+  - apiVersion: azure.platform.upbound.io/v1alpha1
+    kind: AKS
+    metadata:
+      name: test-cp
+      namespace: default
+      annotations:
+        crossplane.io/composition-resource-name: aks
+    status:
+      aks:
+        clusterName: test-cp-aks
+        nodes:
+          vmSize: Standard_D4s_v3
+  assertResources:
+  # The composition renders normally while reporting the drift on status; the
+  # AKS XR is still composed with the desired vmSize.
+  - apiVersion: azure.platform.upbound.io/v1alpha1
+    kind: AKS
+    metadata:
+      name: test-cp
+    spec:
+      parameters:
+        nodes:
+          instanceType: Standard_D2s_v3
+  - apiVersion: helm.m.crossplane.io/v1beta1
+    kind: Release
+    metadata:
+      name: test-cp-uxp
+  # Cluster name and the running (drifted) vmSize are surfaced on the XR status.
+  - apiVersion: azure.platform.upbound.io/v1alpha1
+    kind: ControlPlane
+    metadata:
+      name: test-cp
+    status:
+      controlplane:
+        clusterName: test-cp-aks
+        nodes:
+          currentVmSize: Standard_D4s_v3

@@ -1,8 +1,9 @@
 """04-usages — deletion-order Usage guards.
 
-Helm Release must finish uninstalling before the AKS cluster is deleted, and
-the AKS cluster must be gone before the VNet/Subnet/ResourceGroup are
-removed.
+The Helm Release must finish uninstalling before the AKS cluster is deleted,
+and the AKS cluster must be gone before the network (VNet/Subnet/ResourceGroup,
+owned by the composed Network XR) is removed. Mirrors configuration-aws-ctp:
+guards target the composed AKS + Network XRs, not the underlying MRs.
 """
 
 from crossplane.function import resource
@@ -23,8 +24,8 @@ def add_usage_resources(rsp, id_val, config):
         },
         "spec": {
             "of": {
-                "apiVersion": "containerservice.azure.m.upbound.io/v1beta1",
-                "kind": "KubernetesCluster",
+                "apiVersion": "azure.platform.upbound.io/v1alpha1",
+                "kind": "AKS",
                 "resourceRef": {
                     "name": id_val,
                     "namespace": "default"
@@ -42,102 +43,38 @@ def add_usage_resources(rsp, id_val, config):
         }
     }
 
-    usage_aks_subnet = {
+    usage_aks_network = {
         "apiVersion": "protection.crossplane.io/v1beta1",
         "kind": "Usage",
         "metadata": {
-            "name": f"{id_val}-usage-aks-subnet",
+            "name": f"{id_val}-usage-aks-network",
             "namespace": "default",
             "annotations": {
-                "crossplane.io/composition-resource-name": "usage-aks-subnet"
+                "crossplane.io/composition-resource-name": "usage-aks-network"
             }
         },
         "spec": {
             "of": {
-                "apiVersion": "network.azure.m.upbound.io/v1beta1",
-                "kind": "Subnet",
-                "resourceRef": {
-                    "name": f"{id_val}-aks",
-                    "namespace": "default"
-                }
-            },
-            "by": {
-                "apiVersion": "containerservice.azure.m.upbound.io/v1beta1",
-                "kind": "KubernetesCluster",
-                "resourceRef": {
-                    "name": id_val
-                }
-            },
-            "reason": "AKS cluster must be fully deleted before the subnet is removed",
-            "replayDeletion": True
-        }
-    }
-
-    usage_subnet_vnet = {
-        "apiVersion": "protection.crossplane.io/v1beta1",
-        "kind": "Usage",
-        "metadata": {
-            "name": f"{id_val}-usage-subnet-vnet",
-            "namespace": "default",
-            "annotations": {
-                "crossplane.io/composition-resource-name": "usage-subnet-vnet"
-            }
-        },
-        "spec": {
-            "of": {
-                "apiVersion": "network.azure.m.upbound.io/v1beta1",
-                "kind": "VirtualNetwork",
+                "apiVersion": "azure.platform.upbound.io/v1alpha1",
+                "kind": "Network",
                 "resourceRef": {
                     "name": id_val,
                     "namespace": "default"
                 }
             },
             "by": {
-                "apiVersion": "network.azure.m.upbound.io/v1beta1",
-                "kind": "Subnet",
-                "resourceRef": {
-                    "name": f"{id_val}-aks"
-                }
-            },
-            "reason": "Subnet must be fully deleted before the virtual network is removed",
-            "replayDeletion": True
-        }
-    }
-
-    usage_vnet_rg = {
-        "apiVersion": "protection.crossplane.io/v1beta1",
-        "kind": "Usage",
-        "metadata": {
-            "name": f"{id_val}-usage-vnet-rg",
-            "namespace": "default",
-            "annotations": {
-                "crossplane.io/composition-resource-name": "usage-vnet-rg"
-            }
-        },
-        "spec": {
-            "of": {
-                "apiVersion": "azure.m.upbound.io/v1beta1",
-                "kind": "ResourceGroup",
-                "resourceRef": {
-                    "name": id_val,
-                    "namespace": "default"
-                }
-            },
-            "by": {
-                "apiVersion": "network.azure.m.upbound.io/v1beta1",
-                "kind": "VirtualNetwork",
+                "apiVersion": "azure.platform.upbound.io/v1alpha1",
+                "kind": "AKS",
                 "resourceRef": {
                     "name": id_val
                 }
             },
-            "reason": "Virtual network must be fully deleted before the resource group is removed",
+            "reason": "AKS cluster must be fully deleted before the network is removed",
             "replayDeletion": True
         }
     }
 
-    for usage in (usage_release_aks, usage_aks_subnet, usage_subnet_vnet, usage_vnet_rg):
+    for usage in (usage_release_aks, usage_aks_network):
         stamp(usage, config)
     resource.update(rsp.desired.resources["usage-release-aks"], usage_release_aks)
-    resource.update(rsp.desired.resources["usage-aks-subnet"], usage_aks_subnet)
-    resource.update(rsp.desired.resources["usage-subnet-vnet"], usage_subnet_vnet)
-    resource.update(rsp.desired.resources["usage-vnet-rg"], usage_vnet_rg)
+    resource.update(rsp.desired.resources["usage-aks-network"], usage_aks_network)

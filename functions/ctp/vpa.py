@@ -32,6 +32,7 @@ def add_vpa_resources(rsp, id_val, vpa, vpa_ready, config):
                 "chart": {
                     "name": "vpa",
                     "repository": "https://charts.fairwinds.com/stable",
+                    # renovate: datasource=helm depName=vpa registryUrl=https://charts.fairwinds.com/stable
                     "version": "4.10.1"
                 },
                 "namespace": "kube-system",

@@ -9,7 +9,8 @@ from crossplane.function import resource
 
 def update_status(rsp, id_val, params, uxp_version, uxp_deployed, backup,
                  client_id, container_ref, observed, nodes, ng_actual_vm_size,
-                 ng_size_mismatch, vpa, knative, license_conflict, config):
+                 ng_size_mismatch, cluster_name, vpa, knative, license_conflict,
+                 config):
     # rsp.desired.composite.resource is a google.protobuf.Struct — convert
     # so we can read fields out of the partially-built XR.
     xr_dict = resource.struct_to_dict(rsp.desired.composite.resource)
@@ -81,6 +82,9 @@ def update_status(rsp, id_val, params, uxp_version, uxp_deployed, backup,
         "ready": ready,
         "syncedAndReady": synced_and_ready
     }
+
+    if cluster_name:
+        status["controlplane"]["clusterName"] = cluster_name
 
     status["controlplane"]["nodes"] = {
         "vmSize": nodes.get("vmSize", "")

@@ -1,0 +1,16 @@
+# Spreads the AKS default node pool across availability zones for
+# node-level resilience. availabilityZones is immutable once set — to change
+# it, provision a new ControlPlane (and restore from backup if needed).
+apiVersion: azure.platform.upbound.io/v1alpha1
+kind: ControlPlane
+metadata:
+  name: zoned-control-plane
+spec:
+  parameters:
+    id: zoned-control-plane
+    location: eastus
+    version: "1.35"
+    nodes:
+      count: 3
+      vmSize: Standard_D2s_v3
+      availabilityZones: ["1", "2", "3"]

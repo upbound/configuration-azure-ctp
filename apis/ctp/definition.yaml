@@ -36,11 +36,12 @@ spec:
                     default: default
                   version:
                     description: >-
-                      Kubernetes version for the AKS cluster. Standard-support
-                      versions only; 1.31 and earlier require AKS Long-Term
-                      Support (Premium tier) and are not enumerated here. Run
-                      `az aks get-versions --location <loc> -o table` to check
-                      what's currently available in your target region.
+                      Kubernetes version for the AKS cluster. Constrained to the
+                      range the underlying configuration-azure-aks AKS XRD
+                      accepts (1.32-1.35). 1.31 and earlier require AKS
+                      Long-Term Support (Premium tier). Run `az aks get-versions
+                      --location <loc> -o table` to check what's available in
+                      your target region.
                     type: string
                     enum:
                     - "1.35"
@@ -59,9 +60,39 @@ spec:
                         type: string
                         description: VM size for the AKS node pool (e.g. "Standard_D2s_v3").
                         default: Standard_D2s_v3
+                      availabilityZones:
+                        type: array
+                        description: >-
+                          Optional list of availability zones to spread the default
+                          node pool across (e.g. ["1", "2", "3"]). When omitted, no
+                          zones are set. Immutable once set.
+                        items:
+                          type: string
                     required:
                     - count
                     - vmSize
+                  network:
+                    type: object
+                    description: >-
+                      Virtual network topology for the control plane. Optional;
+                      values are passed through to the underlying
+                      configuration-azure-network Network XR. Azure AKS spreads
+                      nodes across availability zones at the node-pool level, so
+                      a single general subnet is used (no per-AZ subnets).
+                    properties:
+                      addressRange:
+                        type: string
+                        description: >-
+                          CIDR block for the virtual network. Must not overlap the
+                          AKS service CIDR (Azure default 10.0.0.0/16); the default
+                          below is chosen to avoid that conflict.
+                        default: "10.224.0.0/16"
+                      generalSubnetRange:
+                        type: string
+                        description: >-
+                          CIDR block for the general (AKS) subnet. Must sit within
+                          addressRange and not overlap the AKS service CIDR.
+                        default: "10.224.0.0/24"
                   uxp:
                     type: object
                     description: UXP installation configuration.
@@ -88,6 +119,13 @@ spec:
                           "<storage-account-name>/<container-name>". The storage account and
                           container are created if missing and never deleted by Crossplane.
                         pattern: '^[a-z0-9]+/[a-z0-9-]+$'
+                      bucketRegion:
+                        type: string
+                        description: >-
+                          Azure region for the backup storage account. Defaults to the
+                          control plane's location. Set to a different region than the cluster
+                          for cross-region disaster recovery, so backups survive a full outage
+                          of the cluster's region.
                       schedule:
                         type: string
                         description: >-
@@ -175,12 +213,12 @@ spec:
                     items:
                       type: string
                       enum:
-                        - "*"
-                        - Create
-                        - Observe
-                        - Update
-                        - Delete
-                        - LateInitialize
+                      - "*"
+                      - Create
+                      - Observe
+                      - Update
+                      - Delete
+                      - LateInitialize
                     default:
                     - "*"
                 required:
@@ -200,6 +238,9 @@ spec:
                 properties:
                   created:
                     description: Creation timestamp of this ControlPlane resource (RFC 3339).
+                    type: string
+                  clusterName:
+                    description: Name of the AKS cluster backing this control plane, sourced from the composed AKS XR status.
                     type: string
                   uxp:
                     description: UXP installation status on the AKS cluster.
