@@ -33,8 +33,8 @@ spec:
     spec:
       parameters:
         region: eastus
-        addressRange: 10.0.0.0/16
-        generalSubnetRange: 10.0.1.0/24
+        addressRange: 10.224.0.0/16
+        generalSubnetRange: 10.224.0.0/24
   - apiVersion: azure.platform.upbound.io/v1alpha1
     kind: AKS
     metadata:

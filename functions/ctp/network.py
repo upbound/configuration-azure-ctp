@@ -29,8 +29,8 @@ def add_network_resources(rsp, id_val, location, provider_config, mgmt_policies,
             "parameters": {
                 "id": id_val,
                 "region": location,
-                "addressRange": network_param.get("addressRange", "10.0.0.0/16"),
-                "generalSubnetRange": network_param.get("generalSubnetRange", "10.0.1.0/24"),
+                "addressRange": network_param.get("addressRange", "10.224.0.0/16"),
+                "generalSubnetRange": network_param.get("generalSubnetRange", "10.224.0.0/24"),
                 "managementPolicies": mgmt_policies,
                 "providerConfigName": provider_config
             }

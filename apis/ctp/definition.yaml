@@ -82,12 +82,17 @@ spec:
                     properties:
                       addressRange:
                         type: string
-                        description: CIDR block for the virtual network.
-                        default: "10.0.0.0/16"
+                        description: >-
+                          CIDR block for the virtual network. Must not overlap the
+                          AKS service CIDR (Azure default 10.0.0.0/16); the default
+                          below is chosen to avoid that conflict.
+                        default: "10.224.0.0/16"
                       generalSubnetRange:
                         type: string
-                        description: CIDR block for the general (AKS) subnet.
-                        default: "10.0.1.0/24"
+                        description: >-
+                          CIDR block for the general (AKS) subnet. Must sit within
+                          addressRange and not overlap the AKS service CIDR.
+                        default: "10.224.0.0/24"
                   uxp:
                     type: object
                     description: UXP installation configuration.
