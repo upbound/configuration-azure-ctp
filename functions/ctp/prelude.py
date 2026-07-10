@@ -184,11 +184,24 @@ def parse_blob_location(location: str) -> tuple:
 
 
 def get_nodepool_actual_vm_size(observed: Dict) -> str:
-    """Return the vmSize reported by the observe-only KubernetesClusterNodePool,
-    or "" when the observe has not yet synced."""
-    obs = observed.get("nodepool-observe")
+    """Return the running default-node-pool vmSize from the composed AKS XR's
+    status.aks.nodes.vmSize, or "" until the XR surfaces it
+    (configuration-azure-aks v2.0.1+)."""
+    obs = observed.get("aks")
     if not obs:
         return ""
 
     res = obs.resource if hasattr(obs, "resource") else obs
-    return res.get("status", {}).get("atProvider", {}).get("vmSize", "")
+    return res.get("status", {}).get("aks", {}).get("nodes", {}).get("vmSize", "")
+
+
+def get_cluster_name(observed: Dict) -> str:
+    """Return the AKS cluster name from the composed AKS XR's
+    status.aks.clusterName, or "" until the XR surfaces it
+    (configuration-azure-aks v2.0.1+)."""
+    obs = observed.get("aks")
+    if not obs:
+        return ""
+
+    res = obs.resource if hasattr(obs, "resource") else obs
+    return res.get("status", {}).get("aks", {}).get("clusterName", "")

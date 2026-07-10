@@ -16,8 +16,11 @@ sibling module:
   vpa.py                (08) VPA + metrics-server Helm Releases
   knative.py            (09) cert-manager + knative-operator + serving CR
   runtime_config.py     (10) UpboundRuntimeConfig (ProviderVPA + Knative caps)
-  nodepool_observe.py   (11) Observe-only KubernetesClusterNodePool for vmSize drift
   status.py             (99) XR status writeback + ClaimConditions
+
+Cluster metadata (OIDC issuer, running node-pool vmSize, cluster name) is read
+from the composed AKS XR's status.aks (configuration-azure-aks v2.0.1+), so no
+observe-only managed resources are composed here.
 """
 
 from datetime import datetime, timezone
@@ -30,11 +33,11 @@ from .backup import add_backup_resources
 from .knative import add_knative_resources
 from .licensing import add_license_resources
 from .network import add_network_resources
-from .nodepool_observe import add_nodepool_observe
 from .prelude import (
     build_manager_args,
     check_license_conflict,
     extract_oidc_info,
+    get_cluster_name,
     get_nodepool_actual_vm_size,
     get_storage_account_id,
     get_workload_identity_client_id,
@@ -117,6 +120,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
 
     ng_actual_vm_size = get_nodepool_actual_vm_size(observed_resources)
     ng_size_mismatch = bool(ng_actual_vm_size) and ng_actual_vm_size != nodes.get("vmSize", "")
+    cluster_name = get_cluster_name(observed_resources)
 
     # --- Compose resources ---
     add_network_resources(rsp, id_val, location, provider_config, mgmt_policies,
@@ -154,9 +158,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         add_runtime_config(rsp, id_val, vpa, knative, vpa_ready,
                           knative_fully_ready, config)
 
-    add_nodepool_observe(rsp, id_val, location, provider_config, config)
-
     update_status(rsp, id_val, params, uxp_version, uxp_deployed, backup,
                  client_id, backup.get("location", ""), observed_resources,
-                 nodes, ng_actual_vm_size, ng_size_mismatch, vpa, knative,
-                 license_conflict, config)
+                 nodes, ng_actual_vm_size, ng_size_mismatch, cluster_name, vpa,
+                 knative, license_conflict, config)

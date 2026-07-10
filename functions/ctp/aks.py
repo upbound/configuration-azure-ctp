@@ -25,6 +25,15 @@ from .prelude import stamp
 
 def add_aks_resources(rsp, id_val, location, provider_config, version, nodes,
                      mgmt_policies, config):
+    nodes_out = {
+        "count": nodes.get("count", 2),
+        "instanceType": nodes.get("vmSize", "Standard_D2s_v3")
+    }
+    # Optional, immutable once set — only forward it when the operator asked
+    # for zones so the AKS default node pool stays zone-less otherwise.
+    if nodes.get("availabilityZones"):
+        nodes_out["availabilityZones"] = nodes["availabilityZones"]
+
     aks = {
         "apiVersion": "azure.platform.upbound.io/v1alpha1",
         "kind": "AKS",
@@ -40,10 +49,7 @@ def add_aks_resources(rsp, id_val, location, provider_config, version, nodes,
                 "id": id_val,
                 "region": location,
                 "version": version,
-                "nodes": {
-                    "count": nodes.get("count", 2),
-                    "instanceType": nodes.get("vmSize", "Standard_D2s_v3")
-                },
+                "nodes": nodes_out,
                 "managementPolicies": mgmt_policies,
                 "providerConfigName": provider_config
             }
