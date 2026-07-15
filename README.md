@@ -44,8 +44,9 @@ up project run --local        # spins up a KIND cluster and installs the package
 
 ### Upper (management) cluster: configure the Azure provider
 
-The management cluster running this package needs an Azure `ClusterProviderConfig`
-so the providers can authenticate. See `examples/install/` for three flavors:
+The management cluster running this package needs an Azure `ProviderConfig`
+(namespaced, in the `default` namespace) so the providers can authenticate.
+See `examples/install/` for three flavors:
 
 * `azure-providerconfig-secret.yaml` — service principal in a Secret (use this on
   local KIND / any cluster without a trusted OIDC issuer).
@@ -273,15 +274,15 @@ not enumerated. Verify availability in your target region with
 
 ## Testing
 
-* Composition tests: `up test run tests/test-controlplane` — 14 tests
+* Composition tests: `up test run tests/test-controlplane` — 16 tests
   covering basic dispatch, backup, license, schedule, VPA, Knative,
   install-from restore, RBAC, namespace targeting.
 * E2E (real Azure): `up test run tests/e2etest-controlplane --e2e` — runs
   the full provisioning chain against a real Azure subscription.
 
 The E2E test requires:
-- A working Azure `ClusterProviderConfig` named `default` (see
-  `examples/install/` for the three flavors).
+- A working Azure `ProviderConfig` named `default` in the `default` namespace
+  (see `examples/install/` for the three flavors).
 - An Azure principal with `User Access Administrator` (or `Owner`) when
   `backup.enabled: yes` (see "Required Azure permissions" above).
 - A `uxp-license` Secret in `crossplane-system` containing a license whose
