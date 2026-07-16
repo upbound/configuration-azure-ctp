@@ -1,24 +1,36 @@
-# E2E test: Azure ControlPlane with backup + enterprise license.
+# E2E test: Azure ControlPlane with Workload-Identity backup.
 # Spins up a real AKS cluster via the configuration-azure-ctp composition,
-# installs UXP, wires Workload Identity backup, and applies an enterprise
-# license.
-# Requires:
-#   - An Azure ProviderConfig named "default" with valid credentials
-#     (created automatically from initResources, but the referenced Secret
-#     "azure-creds" in crossplane-system must already exist on the test
-#     control plane with key "creds" containing the Azure service-principal
-#     JSON).
-#   - A Secret named "uxp-license" in namespace "default" whose key
-#     "license.json" contains the UXP license JSON.
-#   - Sufficient Azure quotas for one Standard_D2s_v3 two-node AKS cluster
-#     in eastus.
+# installs UXP, and wires Workload Identity backup.
 #
+# Credentials: the Azure ProviderConfig "default" uses Upbound-injected identity
+# (source: Upbound) federated to the solutions e2e UserAssignedIdentity, so no
+# pre-provisioned Secret is required on the ephemeral test control plane. It is a
+# namespaced ProviderConfig in "default" — the namespace the composed managed
+# resources (AKS, Network, storage, managed identity) are created in and
+# reference by name.
+#
+# Backup is enabled but NO license is supplied, and that is sufficient here:
+# this test asserts only that the composition wires backup up and the
+# ControlPlane XR reaches Ready. The Storage Account/Container, BackupConfig and
+# RBAC are provider-kubernetes/azure resources that go Ready once their
+# manifests apply (UXP installs the admin.uxp.upbound.io CRDs regardless of
+# licensing).
+#
+# NOTE: actually EXECUTING a backup requires a UXP Standard-plan (or above)
+# license — https://docs.upbound.io/manuals/uxp/howtos/backup-and-restore/. This
+# test does not trigger or assert a real backup run, so it does not need one.
+#
+# The clientID/tenantID/subscriptionID below are the shared Upbound solutions
+# e2e Azure identity, the same values used by configuration-azure-aks and
+# configuration-azure-network e2e tests.
+#
+# Requires sufficient Azure quotas for one Standard_D2s_v3 two-node AKS cluster.
 # Expected runtime: 25-45 minutes (AKS provisioning + UXP install + Workload
 # Identity wiring).
 apiVersion: meta.dev.upbound.io/v1alpha1
 kind: E2ETest
 metadata:
-  name: controlplane-with-backup-and-license
+  name: controlplane-with-backup
 spec:
   crossplane:
     autoUpgrade:
@@ -27,18 +39,18 @@ spec:
   - Ready
   timeoutSeconds: 3600
   cleanupTimeoutSeconds: 1200
-  initResources:
-  - apiVersion: azure.upbound.io/v1beta1
+  extraResources:
+  - apiVersion: azure.m.upbound.io/v1beta1
     kind: ProviderConfig
     metadata:
       name: default
+      namespace: default
     spec:
       credentials:
-        source: Secret
-        secretRef:
-          namespace: crossplane-system
-          name: azure-creds
-          key: creds
+        source: Upbound
+      clientID: bcf40abd-283c-494b-b186-03d6c864be51
+      tenantID: b9925bc4-8383-4c37-b9d2-fa456d1bb1c7
+      subscriptionID: 038f2b7c-3265-43b8-8624-c9ad5da610a8
   manifests:
   - apiVersion: azure.platform.upbound.io/v1alpha1
     kind: ControlPlane
@@ -55,8 +67,4 @@ spec:
         backup:
           enabled: "yes"
           location: e2etestcpbackup/uxp-backups
-        license:
-          secretRef:
-            name: uxp-license
-            namespace: default
   skipDelete: false

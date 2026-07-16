@@ -150,6 +150,11 @@ spec:
     spec:
       forProvider:
         location: eastus
+      # Cloud MRs use a namespaced ProviderConfig (in the XR namespace),
+      # matching the AKS/Network building blocks — not ClusterProviderConfig.
+      providerConfigRef:
+        name: default
+        kind: ProviderConfig
   - apiVersion: storage.azure.m.upbound.io/v1beta1
     kind: Container
     metadata:
@@ -513,6 +518,10 @@ spec:
     kind: UserAssignedIdentity
     metadata:
       name: test-cp-backup-identity
+    spec:
+      providerConfigRef:
+        name: default
+        kind: ProviderConfig
   - apiVersion: managedidentity.azure.m.upbound.io/v1beta1
     kind: FederatedIdentityCredential
     metadata:

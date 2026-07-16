@@ -20,9 +20,10 @@
 # Documentation:
 #   https://docs.upbound.io/concepts/control-planes/configuration/managed-identities/
 apiVersion: azure.m.upbound.io/v1beta1
-kind: ClusterProviderConfig
+kind: ProviderConfig
 metadata:
   name: default
+  namespace: default
 spec:
   credentials:
     source: Upbound

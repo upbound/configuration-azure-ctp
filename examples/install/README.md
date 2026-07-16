@@ -10,9 +10,11 @@ credential flavors and apply it once before applying a `ControlPlane` XR.
 | `azure-providerconfig-upbound.yaml`   | `Upbound` (OIDC)    | **Recommended** for Upbound Cloud Spaces control planes — federated, secretless. |
 | `azure-providerconfig-oidc.yaml`      | `OIDCTokenFile`     | Self-hosted UXP on a cluster with Workload Identity (AKS/EKS/GKE) already wired. |
 
-All three install a `ClusterProviderConfig` named `default`, which matches the
-default `providerConfigName` on the `ControlPlane` XR. Override
-`spec.parameters.providerConfigName` on the XR to use a different name.
+All three install a namespaced `ProviderConfig` named `default` in the
+`default` namespace, which matches the default `providerConfigName` on the
+`ControlPlane` XR and the namespace the composed managed resources are created
+in. Override `spec.parameters.providerConfigName` on the XR to use a different
+name.
 
 ## Secret-based setup
 

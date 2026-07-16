@@ -55,7 +55,7 @@ def add_backup_resources(rsp, id_val, location, bucket_region, provider_config,
             },
             "providerConfigRef": {
                 "name": provider_config,
-                "kind": "ClusterProviderConfig"
+                "kind": "ProviderConfig"
             }
         }
     }
@@ -83,7 +83,7 @@ def add_backup_resources(rsp, id_val, location, bucket_region, provider_config,
             },
             "providerConfigRef": {
                 "name": provider_config,
-                "kind": "ClusterProviderConfig"
+                "kind": "ProviderConfig"
             }
         }
     }
