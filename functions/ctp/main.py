@@ -9,6 +9,7 @@ sibling module:
   aks.py                (02) KubernetesCluster + Helm/Kubernetes ProviderConfigs
   uxp.py                (03) UXP v2 Helm Release
   k8gb.py               (04b) k8gb operator + CoreDNS producer
+  argo.py               (05b) ArgoCD add-on (UI Ingress + app-of-apps)
   usages.py             (04) deletion-order Usage guards
   backup.py             (05) StorageAccount, Container, observe AKS, BackupConfig, RBAC, Schedule
   workload_identity.py  (06) UserAssignedIdentity, FederatedIdentityCredential,
@@ -33,6 +34,7 @@ from crossplane.function import resource
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
 from .aks import add_aks_resources
+from .argo import add_argocd_resources
 from .backup import add_backup_resources
 from .certmanager import add_certmanager_resources
 from .ingress import add_ingress_resources
@@ -127,6 +129,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     certmanager_ready = is_release_deployed(observed_resources, "certmanager-release")
     ingress_ready = is_release_deployed(observed_resources, "ingress-nginx-release")
     k8gb_deployed = is_release_deployed(observed_resources, "k8gb-release")
+    argocd_deployed = is_release_deployed(observed_resources, "argocd-release")
     knative_op_ready = is_release_deployed(observed_resources, "knative-operator-release")
     knative_deps_ready = certmanager_ready and knative_op_ready
     knative_serving_ready = is_knative_serving_ready(observed_resources)
@@ -170,6 +173,10 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     if k8gb_enabled:
         add_k8gb_resources(rsp, id_val, k8gb, k8gb_geo_tag, k8gb_ext_geo_tags,
                            k8gb_deployed, config)
+
+    if argocd_enabled:
+        add_argocd_resources(rsp, id_val, argocd, argocd_deployed,
+                             certmanager_ready, config)
 
     if backup.get("enabled") == "yes":
         add_backup_resources(rsp, id_val, location, bucket_region, provider_config,

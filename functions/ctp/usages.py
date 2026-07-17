@@ -140,3 +140,20 @@ def add_usage_resources(rsp, id_val, config, k8gb_enabled=False,
             f"{id_val}-k8gb-coredns",
             "k8gb CoreDNS observe Object must be removed before the AKS cluster is deleted",
             config)
+
+    if argocd_enabled:
+        _emit_aks_usage(
+            rsp, id_val, "usage-argocd-aks",
+            "helm.m.crossplane.io/v1beta1", "Release",
+            f"{id_val}-argocd",
+            "ArgoCD Release must finish uninstalling before the AKS cluster is deleted",
+            config)
+        # Every child-cluster ArgoCD Object also guards the AKS cluster.
+        for cr_name in ("argocd-issuer", "argocd-cert", "argocd-ingress",
+                        "argocd-app"):
+            _emit_aks_usage(
+                rsp, id_val, f"usage-{cr_name}-aks",
+                "kubernetes.m.crossplane.io/v1alpha1", "Object",
+                f"{id_val}-{cr_name}",
+                f"ArgoCD {cr_name} Object must be removed before the AKS cluster is deleted",
+                config)

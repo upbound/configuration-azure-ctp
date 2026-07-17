@@ -249,6 +249,12 @@ spec:
                         description: Enable ArgoCD ("yes" or "no").
                         default: "no"
                         enum: ["yes", "no"]
+                      hostname:
+                        type: string
+                        description: Hostname for the ArgoCD UI Ingress (e.g. argocd.example.com).
+                      url:
+                        type: string
+                        description: Public git repository URL for the root app-of-apps Application.
                   managementPolicies:
                     description: ManagementPolicies for resources. Defaults to ["*"] which includes all operations.
                     type: array
