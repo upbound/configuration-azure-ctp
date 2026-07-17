@@ -220,6 +220,25 @@ spec:
                         description: Enable k8gb ("yes" or "no").
                         default: "no"
                         enum: ["yes", "no"]
+                      dnsZone:
+                        type: string
+                        description: Load-balanced DNS zone k8gb controls (e.g. gslb.example.com).
+                      parentZone:
+                        type: string
+                        description: Parent zone that delegates to the load-balanced zone (e.g. example.com).
+                      clusterGeoTag:
+                        type: string
+                        description: >-
+                          Unique geo tag for this cluster's k8gb instance. Must be unique per control
+                          plane. Defaults to azure-<location>-<id> when omitted.
+                      strategy:
+                        type: string
+                        description: k8gb failover strategy for Gslb resources on this cluster.
+                        enum:
+                        - failover
+                        - roundRobin
+                        - geoip
+                        default: failover
                   argocd:
                     type: object
                     description: >-
@@ -313,6 +332,24 @@ spec:
                     properties:
                       enabled:
                         description: Whether Knative function runtime is enabled.
+                        type: string
+                  k8gb:
+                    description: >-
+                      k8gb producer status — the contract the FleetGslb aggregator consumes.
+                    type: object
+                    properties:
+                      enabled:
+                        description: Whether k8gb is enabled.
+                        type: string
+                      coreDNSEndpoint:
+                        description: >-
+                          The k8gb CoreDNS LoadBalancer endpoint (IP or hostname). Populated once
+                          the Azure Standard LB is provisioned. Must ultimately resolve to an IP for NS glue.
+                        type: string
+                      delegationRecord:
+                        description: >-
+                          Ready-to-use NS + glue delegation for this cluster, in k8gb's
+                          gslb-ns-<zone>-<geoTag> convention, for FleetGslb to write to the parent zone.
                         type: string
                   providerVerticalPodAutoscaling:
                     description: Provider VPA feature status.

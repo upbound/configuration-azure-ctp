@@ -8,6 +8,7 @@ sibling module:
   network.py            (01) ResourceGroup + VirtualNetwork + Subnet
   aks.py                (02) KubernetesCluster + Helm/Kubernetes ProviderConfigs
   uxp.py                (03) UXP v2 Helm Release
+  k8gb.py               (04b) k8gb operator + CoreDNS producer
   usages.py             (04) deletion-order Usage guards
   backup.py             (05) StorageAccount, Container, observe AKS, BackupConfig, RBAC, Schedule
   workload_identity.py  (06) UserAssignedIdentity, FederatedIdentityCredential,
@@ -21,8 +22,9 @@ sibling module:
   status.py             (99) XR status writeback + ClaimConditions
 
 Cluster metadata (OIDC issuer, running node-pool vmSize, cluster name) is read
-from the composed AKS XR's status.aks (configuration-azure-aks v2.0.1+), so no
-observe-only managed resources are composed here.
+from the composed AKS XR's status.aks (configuration-azure-aks v2.0.1+); the only
+observe-only resource composed here is the k8gb CoreDNS Service Object (to read
+its LoadBalancer endpoint for the status contract).
 """
 
 from datetime import datetime, timezone
@@ -34,12 +36,15 @@ from .aks import add_aks_resources
 from .backup import add_backup_resources
 from .certmanager import add_certmanager_resources
 from .ingress import add_ingress_resources
+from .k8gb import add_k8gb_resources
 from .knative import add_knative_resources
 from .licensing import add_license_resources
 from .network import add_network_resources
 from .prelude import (
     build_manager_args,
     check_license_conflict,
+    derive_k8gb_ext_geo_tags,
+    derive_k8gb_geo_tag,
     extract_oidc_info,
     get_cluster_name,
     get_nodepool_actual_vm_size,
@@ -97,6 +102,15 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
 
     license_conflict = check_license_conflict(id_val, license_param, all_ctps)
 
+    # k8gb geo tags: this cluster's unique tag, plus same-cloud k8gb peers on
+    # the same dnsZone (cross-cloud peers are injected later by FleetGslb).
+    k8gb_geo_tag = ""
+    k8gb_ext_geo_tags = ""
+    if k8gb_enabled:
+        k8gb_geo_tag = derive_k8gb_geo_tag(k8gb, location, id_val)
+        k8gb_ext_geo_tags = derive_k8gb_ext_geo_tags(
+            id_val, k8gb.get("dnsZone", ""), k8gb_geo_tag, all_ctps)
+
     observed_resources = {
         name: resource.struct_to_dict(res.resource)
         for name, res in req.observed.resources.items()
@@ -112,6 +126,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     vpa_ready = is_release_deployed(observed_resources, "vpa-release")
     certmanager_ready = is_release_deployed(observed_resources, "certmanager-release")
     ingress_ready = is_release_deployed(observed_resources, "ingress-nginx-release")
+    k8gb_deployed = is_release_deployed(observed_resources, "k8gb-release")
     knative_op_ready = is_release_deployed(observed_resources, "knative-operator-release")
     knative_deps_ready = certmanager_ready and knative_op_ready
     knative_serving_ready = is_knative_serving_ready(observed_resources)
@@ -138,7 +153,8 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     add_aks_resources(rsp, id_val, location, provider_config, version, nodes,
                      mgmt_policies, config)
     add_uxp_release(rsp, id_val, uxp_version, uxp_deployed, mgr_args, config)
-    add_usage_resources(rsp, id_val, config)
+    add_usage_resources(rsp, id_val, config, k8gb_enabled=k8gb_enabled,
+                        argocd_enabled=argocd_enabled)
 
     # cert-manager is always installed (free component, no license gate) so the
     # k8gb/argocd add-ons can rely on it for Ingress TLS independently of knative.
@@ -148,6 +164,12 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     # control planes do not pay for an idle Azure load balancer.
     if k8gb_enabled or argocd_enabled:
         add_ingress_resources(rsp, id_val, ingress_ready, config)
+
+    # k8gb producer: operator + CoreDNS via a native Azure Standard LB, plus the
+    # observe Object that feeds status.controlplane.k8gb.
+    if k8gb_enabled:
+        add_k8gb_resources(rsp, id_val, k8gb, k8gb_geo_tag, k8gb_ext_geo_tags,
+                           k8gb_deployed, config)
 
     if backup.get("enabled") == "yes":
         add_backup_resources(rsp, id_val, location, bucket_region, provider_config,
@@ -180,4 +202,4 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     update_status(rsp, id_val, params, uxp_version, uxp_deployed, backup,
                  client_id, backup.get("location", ""), observed_resources,
                  nodes, ng_actual_vm_size, ng_size_mismatch, cluster_name, vpa,
-                 knative, license_conflict, config)
+                 knative, k8gb, k8gb_geo_tag, license_conflict, config)
