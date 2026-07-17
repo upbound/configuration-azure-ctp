@@ -199,12 +199,35 @@ spec:
                   knative:
                     type: object
                     description: >-
-                      Enable Knative scale-to-zero for UXP functions. When enabled, cert-manager and
-                      Knative Serving are installed automatically on the AKS cluster. Needs a Standard or higher license.
+                      Enable Knative scale-to-zero for UXP functions. When enabled, Knative Serving is
+                      installed automatically on the AKS cluster (cert-manager, its dependency, is always
+                      installed). Needs a Standard or higher license.
                     properties:
                       enabled:
                         type: string
                         description: Enable Knative function runtime ("yes" or "no").
+                        default: "no"
+                        enum: ["yes", "no"]
+                  k8gb:
+                    type: object
+                    description: >-
+                      Enable k8gb (Kubernetes Global Balancer) for health-aware, DNS-based global
+                      failover. Installs the k8gb operator and CoreDNS exposed via an Azure Standard
+                      Load Balancer, and pulls in nginx-ingress. See docs/ctp-addons-implementation-plan.md.
+                    properties:
+                      enabled:
+                        type: string
+                        description: Enable k8gb ("yes" or "no").
+                        default: "no"
+                        enum: ["yes", "no"]
+                  argocd:
+                    type: object
+                    description: >-
+                      Enable ArgoCD (GitOps app-of-apps) with a UI Ingress. Pulls in nginx-ingress.
+                    properties:
+                      enabled:
+                        type: string
+                        description: Enable ArgoCD ("yes" or "no").
                         default: "no"
                         enum: ["yes", "no"]
                   managementPolicies:
