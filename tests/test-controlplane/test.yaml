@@ -61,6 +61,17 @@ spec:
                 podSecurityContext:
                   fsGroup: 65532
                   fsGroupChangePolicy: OnRootMismatch
+  # cert-manager is always installed, decoupled from the knative/license gates.
+  - apiVersion: helm.m.crossplane.io/v1beta1
+    kind: Release
+    metadata:
+      name: test-cp-certmanager
+    spec:
+      forProvider:
+        chart:
+          name: cert-manager
+          repository: https://charts.jetstack.io
+        namespace: cert-manager
   - apiVersion: protection.crossplane.io/v1beta1
     kind: Usage
     metadata:
@@ -632,10 +643,10 @@ spec:
   - apiVersion: helm.m.crossplane.io/v1beta1
     kind: Release
     metadata:
-      name: test-cp-knative-certmanager
+      name: test-cp-certmanager
       namespace: default
       annotations:
-        crossplane.io/composition-resource-name: knative-certmanager-release
+        crossplane.io/composition-resource-name: certmanager-release
     spec:
       forProvider:
         chart:
@@ -728,10 +739,11 @@ spec:
         knative:
           enabled: "yes"
   assertResources:
+  # cert-manager is now the always-on release, not a knative-scoped one.
   - apiVersion: helm.m.crossplane.io/v1beta1
     kind: Release
     metadata:
-      name: test-cp-knative-certmanager
+      name: test-cp-certmanager
     spec:
       forProvider:
         chart:
