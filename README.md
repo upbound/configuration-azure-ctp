@@ -308,10 +308,13 @@ not enumerated. Verify availability in your target region with
 * Composition tests: `up test run tests/test-controlplane` — 21 tests
   covering basic dispatch, backup, license, schedule, VPA, Knative,
   install-from restore, RBAC, namespace targeting, and the k8gb/ArgoCD add-ons.
-* E2E (real Azure): `up test run tests/e2etest-controlplane --e2e` — runs
-  the full provisioning chain against a real Azure subscription.
-  `up test run tests/e2etest-addons --e2e` installs the k8gb + ArgoCD add-on
-  stack on a real AKS cluster (behind the `run-e2e-tests` CI label).
+* E2E (real Azure): `up test run tests/e2etest-controlplane --e2e` — a single
+  comprehensive test (`controlplane`) that provisions a real AKS cluster and
+  exercises the full stack: UXP + Workload-Identity backup + the k8gb producer +
+  ArgoCD (behind the `run-e2e-tests` CI label). Auth uses `source: Upbound`
+  federation, which requires one federated identity credential matching the
+  subject `mcp:solutions/configuration-azure-ctp-uptest-controlplane:provider:provider-azure`
+  on the shared `dare-oidc-provider` app — see the test file header.
 
 The E2E test requires:
 - A working Azure `ProviderConfig` named `default` in the `default` namespace

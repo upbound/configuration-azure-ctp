@@ -1,44 +1,51 @@
-# E2E test: Azure ControlPlane with Workload-Identity backup.
-# Spins up a real AKS cluster via the configuration-azure-ctp composition,
-# installs UXP, and wires Workload Identity backup.
+# Single comprehensive E2E test for configuration-azure-ctp.
+#
+# Spins up a real AKS cluster via the composition and exercises the full stack in
+# one run: UXP + Workload-Identity backup + the k8gb producer (operator + CoreDNS
+# via a native Azure Standard LB) + ArgoCD (UI Ingress + app-of-apps), which also
+# pulls in cert-manager (always-on) and nginx-ingress.
+#
+# WHY ONE TEST: e2e auth uses `source: Upbound` workload-identity federation to the
+# shared AAD app `dare-oidc-provider` (appId bcf40abd-...). Azure federates the
+# token to a federated identity credential (FIC) whose subject embeds THIS test's
+# name:
+#     mcp:solutions/configuration-azure-ctp-uptest-controlplane:provider:provider-azure
+# The app is at its 20-FIC cap, so we keep a SINGLE e2e test named `controlplane`
+# and register exactly one matching FIC (issuer https://proidc.upbound.io,
+# audience api://AzureADTokenExchange). Adding more e2e tests would need more FICs
+# — do not rename this test or split it without registering the new subject(s).
 #
 # Credentials: the Azure ProviderConfig "default" uses Upbound-injected identity
-# (source: Upbound) federated to the solutions e2e UserAssignedIdentity, so no
-# pre-provisioned Secret is required on the ephemeral test control plane. It is a
-# namespaced ProviderConfig in "default" — the namespace the composed managed
-# resources (AKS, Network, storage, managed identity) are created in and
-# reference by name.
+# (clientID/tenantID/subscriptionID = the shared solutions e2e Azure identity, the
+# same values used by configuration-azure-aks/-network). No pre-provisioned Secret
+# is required on the ephemeral test control plane.
 #
-# Backup is enabled but NO license is supplied, and that is sufficient here:
-# this test asserts only that the composition wires backup up and the
-# ControlPlane XR reaches Ready. The Storage Account/Container, BackupConfig and
-# RBAC are provider-kubernetes/azure resources that go Ready once their
-# manifests apply (UXP installs the admin.uxp.upbound.io CRDs regardless of
-# licensing).
+# What this asserts: the ControlPlane XR reaches Ready=True. Because
+# function-auto-ready aggregates every composed resource, Ready=True implies UXP,
+# the backup chain + Workload Identity, and every add-on Release/Object came up
+# cleanly. The k8gb CoreDNS endpoint is surfaced on
+# status.controlplane.k8gb.coreDNSEndpoint (verify non-empty manually — E2ETest
+# cannot assert arbitrary status fields).
 #
-# NOTE: actually EXECUTING a backup requires a UXP Standard-plan (or above)
-# license — https://docs.upbound.io/manuals/uxp/howtos/backup-and-restore/. This
-# test does not trigger or assert a real backup run, so it does not need one.
+# Scope: installation only. It does NOT test DNS failover — nothing writes the NS
+# delegation yet (FleetGslb is a separate workstream). No license is supplied; the
+# backup wiring and add-ons need none. CoreDNS serving TCP+UDP:53 on one Service
+# relies on the AKS MixedProtocolLBService gate (GA/on in supported AKS).
 #
-# The clientID/tenantID/subscriptionID below are the shared Upbound solutions
-# e2e Azure identity, the same values used by configuration-azure-aks and
-# configuration-azure-network e2e tests.
-#
-# Requires sufficient Azure quotas for one Standard_D2s_v3 two-node AKS cluster.
-# Expected runtime: 25-45 minutes (AKS provisioning + UXP install + Workload
-# Identity wiring).
+# Requires Azure quota for one Standard_D2s_v3 two-node AKS cluster plus the load
+# balancers the add-ons provision. Expected runtime: 40-70 minutes.
 apiVersion: meta.dev.upbound.io/v1alpha1
 kind: E2ETest
 metadata:
-  name: controlplane-with-backup
+  name: controlplane
 spec:
   crossplane:
     autoUpgrade:
       channel: Stable
   defaultConditions:
   - Ready
-  timeoutSeconds: 3600
-  cleanupTimeoutSeconds: 1200
+  timeoutSeconds: 5400
+  cleanupTimeoutSeconds: 1800
   extraResources:
   - apiVersion: azure.m.upbound.io/v1beta1
     kind: ProviderConfig
@@ -67,4 +74,13 @@ spec:
         backup:
           enabled: "yes"
           location: e2etestcpbackup/uxp-backups
+        k8gb:
+          enabled: "yes"
+          dnsZone: gslb.example.com
+          parentZone: example.com
+          strategy: failover
+        argocd:
+          enabled: "yes"
+          hostname: argocd.example.com
+          url: https://github.com/argoproj/argocd-example-apps
   skipDelete: false
