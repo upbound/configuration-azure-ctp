@@ -1,0 +1,19 @@
+# ControlPlane with the ArgoCD add-on enabled. Installs ArgoCD with a UI Ingress
+# (nginx + a self-signed cert-manager Certificate) and a root app-of-apps
+# Application pointing at a public git repo. Pulls in nginx-ingress + cert-manager.
+apiVersion: azure.platform.upbound.io/v1alpha1
+kind: ControlPlane
+metadata:
+  name: argocd-control-plane
+spec:
+  parameters:
+    id: argocd-control-plane
+    location: eastus
+    version: "1.34"
+    nodes:
+      count: 3
+      vmSize: Standard_D2s_v3
+    argocd:
+      enabled: "yes"
+      hostname: argocd.example.com
+      url: https://github.com/example/my-gitops-repo

@@ -1,9 +1,10 @@
-"""09-knative — cert-manager + knative-operator + KnativeServing CR.
+"""09-knative — knative-operator + KnativeServing CR.
 
-The KnativeServing CR is only emitted once the cert-manager and
-knative-operator Helm Releases have both reached state=deployed; otherwise
-provider-kubernetes would reject the manifest because the CRDs do not exist
-yet.
+cert-manager (a hard dependency of Knative Serving) is installed separately and
+unconditionally by certmanager.py; this module gates the KnativeServing CR on
+that always-on cert-manager plus the knative-operator both reaching
+state=deployed, otherwise provider-kubernetes would reject the manifest because
+the CRDs do not exist yet.
 
 Cloud-agnostic — identical to the AWS sibling.
 """
@@ -13,55 +14,17 @@ from crossplane.function import resource
 from .prelude import stamp
 
 
-def add_knative_resources(rsp, id_val, certmanager_ready, knative_op_ready,
+def add_knative_resources(rsp, id_val, knative_op_ready,
                          knative_deps_ready, knative_serving_ready,
                          observed, config):
     # Add the provider-helm v1.2.2 stale-Ready workaround: when the chart
     # has reached state=deployed in observed state, stamp the resource as
     # ready so function-auto-ready accepts it. Same pattern as uxp.py.
-    certmanager_annotations = {
-        "crossplane.io/composition-resource-name": "knative-certmanager-release"
-    }
-    if certmanager_ready:
-        certmanager_annotations["crossplane.io/ready"] = "True"
-
     operator_annotations = {
         "crossplane.io/composition-resource-name": "knative-operator-release"
     }
     if knative_op_ready:
         operator_annotations["crossplane.io/ready"] = "True"
-
-    certmanager_release = {
-        "apiVersion": "helm.m.crossplane.io/v1beta1",
-        "kind": "Release",
-        "metadata": {
-            "name": f"{id_val}-knative-certmanager",
-            "namespace": "default",
-            "annotations": certmanager_annotations
-        },
-        "spec": {
-            "forProvider": {
-                "chart": {
-                    "name": "cert-manager",
-                    "repository": "https://charts.jetstack.io",
-                    # renovate: datasource=helm depName=cert-manager registryUrl=https://charts.jetstack.io
-                    "version": "v1.16.3"
-                },
-                "namespace": "cert-manager",
-                "skipCreateNamespace": False,
-                "wait": True,
-                "set": [
-                    {"name": "crds.enabled", "value": "true"}
-                ]
-            },
-            "providerConfigRef": {
-                "name": id_val,
-                "kind": "ProviderConfig"
-            }
-        }
-    }
-    stamp(certmanager_release, config)
-    resource.update(rsp.desired.resources["knative-certmanager-release"], certmanager_release)
 
     operator_release = {
         "apiVersion": "helm.m.crossplane.io/v1beta1",

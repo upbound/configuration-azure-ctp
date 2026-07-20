@@ -205,3 +205,53 @@ def get_cluster_name(observed: Dict) -> str:
 
     res = obs.resource if hasattr(obs, "resource") else obs
     return res.get("status", {}).get("aks", {}).get("clusterName", "")
+
+
+def derive_k8gb_geo_tag(k8gb_param: Optional[Dict], location: str,
+                        id_val: str) -> str:
+    """The k8gb clusterGeoTag, unique per control plane. Defaults to
+    azure-<location>-<id> (a bare azure-<location> collides when two CPs share a
+    location); an explicit clusterGeoTag param overrides it."""
+    tag = (k8gb_param or {}).get("clusterGeoTag")
+    return tag if tag else f"azure-{location}-{id_val}"
+
+
+def derive_k8gb_ext_geo_tags(id_val: str, dns_zone: str, my_tag: str,
+                             all_ctps: List[Dict]) -> str:
+    """Comma-separated geo tags of same-cloud peer control planes that have
+    k8gb enabled on the same dnsZone. Cross-cloud peers are injected by the
+    fleet layer (FleetGslb) and are out of scope here; empty is fine for a
+    single-cluster start."""
+    tags = set()
+    for ctp in all_ctps:
+        c_name = ctp.get("metadata", {}).get("name", "")
+        if not c_name or c_name == id_val:
+            continue
+        c_params = ctp.get("spec", {}).get("parameters", {})
+        c_k8gb = c_params.get("k8gb", {}) or {}
+        if c_k8gb.get("enabled") != "yes" or c_k8gb.get("dnsZone") != dns_zone:
+            continue
+        c_tag = derive_k8gb_geo_tag(c_k8gb, c_params.get("location", ""), c_name)
+        if c_tag and c_tag != my_tag:
+            tags.add(c_tag)
+    return ",".join(sorted(tags))
+
+
+def extract_coredns_endpoint(observed: Dict) -> str:
+    """The k8gb CoreDNS LoadBalancer endpoint (IP or hostname) read from the
+    observe-only Object on the child CoreDNS Service. Azure Standard LBs surface
+    an IP (the value needed for NS glue). Empty until the LB is provisioned."""
+    obs = observed.get("k8gb-coredns-observe")
+    if not obs:
+        return ""
+    res = obs.resource if hasattr(obs, "resource") else obs
+    ingress = (res.get("status", {})
+                  .get("atProvider", {})
+                  .get("manifest", {})
+                  .get("status", {})
+                  .get("loadBalancer", {})
+                  .get("ingress", []))
+    if not ingress:
+        return ""
+    first = ingress[0]
+    return first.get("ip") or first.get("hostname") or ""

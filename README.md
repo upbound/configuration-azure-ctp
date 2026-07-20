@@ -254,6 +254,34 @@ az identity federated-credential create \
   --audiences api://AzureADTokenExchange
 ```
 
+## Add-ons
+
+Optional platform add-ons layered on top of UXP. **cert-manager** is installed
+unconditionally on every control plane (a free dependency of Knative/k8gb/ArgoCD
+Ingress TLS). **nginx-ingress** is installed only when `k8gb` or `argocd` is
+enabled, so plain control planes do not pay for an idle Azure load balancer.
+
+### k8gb (global failover)
+
+When `k8gb.enabled: "yes"`, the control plane becomes a **producer** in the fleet
+GSLB architecture (see `docs/ctp-addons-implementation-plan.md`): it installs the
+k8gb operator and CoreDNS exposed through an Azure Standard Load Balancer serving
+`:53`, and surfaces `status.controlplane.k8gb.coreDNSEndpoint` + `delegationRecord`
+for the parent-side FleetGslb aggregator to consume. Parameters: `dnsZone`
+(load-balanced zone), `parentZone`, `clusterGeoTag` (defaults to
+`azure-<location>-<id>`), and `strategy` (`failover`/`roundRobin`/`geoip`). See
+`examples/controlplane/with-k8gb.yaml`. Unlike AWS EKS, AKS's native cloud
+provider gives the CoreDNS Service a UDP-capable Standard LB, so no
+load-balancer-controller add-on is needed. GSLB is not yet functional end-to-end
+— nothing writes the NS delegation until FleetGslb exists.
+
+### ArgoCD
+
+When `argocd.enabled: "yes"`, ArgoCD is installed with a UI Ingress
+(`argocd.hostname`, nginx + a self-signed cert-manager Certificate) and a root
+app-of-apps `Application` pointing at the public git repo `argocd.url`. See
+`examples/controlplane/with-argocd.yaml`.
+
 ## Examples
 
 See `examples/controlplane/`:
@@ -263,6 +291,9 @@ See `examples/controlplane/`:
 * `with-backup.yaml` — full feature set: backup chain with Workload
   Identity, scheduled backups, enterprise license, ProviderVPA, Knative
   function runtime.
+* `with-k8gb.yaml` — k8gb global-failover producer (operator + CoreDNS via an
+  Azure Standard LB + the `status.controlplane.k8gb` contract).
+* `with-argocd.yaml` — ArgoCD add-on (UI Ingress + root app-of-apps).
 * `uxp-ctp-1.yaml` — opinionated production-style example (5 nodes,
   `Standard_D4s_v3`, 15-min backup schedule).
 
@@ -274,11 +305,16 @@ not enumerated. Verify availability in your target region with
 
 ## Testing
 
-* Composition tests: `up test run tests/test-controlplane` — 16 tests
+* Composition tests: `up test run tests/test-controlplane` — 21 tests
   covering basic dispatch, backup, license, schedule, VPA, Knative,
-  install-from restore, RBAC, namespace targeting.
-* E2E (real Azure): `up test run tests/e2etest-controlplane --e2e` — runs
-  the full provisioning chain against a real Azure subscription.
+  install-from restore, RBAC, namespace targeting, and the k8gb/ArgoCD add-ons.
+* E2E (real Azure): `up test run tests/e2etest-controlplane --e2e` — a single
+  comprehensive test (`controlplane`) that provisions a real AKS cluster and
+  exercises the full stack: UXP + Workload-Identity backup + the k8gb producer +
+  ArgoCD (behind the `run-e2e-tests` CI label). Auth uses `source: Upbound`
+  federation, which requires one federated identity credential matching the
+  subject `mcp:solutions/configuration-azure-ctp-uptest-controlplane:provider:provider-azure`
+  on the shared `dare-oidc-provider` app — see the test file header.
 
 The E2E test requires:
 - A working Azure `ProviderConfig` named `default` in the `default` namespace
