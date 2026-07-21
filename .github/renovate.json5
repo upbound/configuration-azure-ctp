@@ -62,19 +62,6 @@
       datasourceTemplate: '{{{datasource}}}',
       depNameTemplate: '{{{depName}}}',
     },
-    {
-      customType: 'regex',
-      description: 'Bump Helm chart versions embedded in the Python composition functions',
-      fileMatch: [
-        '^functions/.*\\.py$',
-      ],
-      matchStrings: [
-        '#\\s*renovate:\\s*datasource=(?<datasource>[^\\s]+)\\s+depName=(?<depName>[^\\s]+)\\s+registryUrl=(?<registryUrl>[^\\s]+)\\s*\\n\\s*"version":\\s*"(?<currentValue>[^"]+)"',
-      ],
-      datasourceTemplate: '{{{datasource}}}',
-      depNameTemplate: '{{{depName}}}',
-      registryUrlTemplate: '{{{registryUrl}}}',
-    },
   ],
   "git-submodules": {
      "enabled": true
