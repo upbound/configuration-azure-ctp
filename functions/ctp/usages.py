@@ -125,6 +125,21 @@ def add_usage_resources(rsp, id_val, config, k8gb_enabled=False,
     resource.update(rsp.desired.resources["usage-release-aks"], usage_release_aks)
     resource.update(rsp.desired.resources["usage-aks-network"], usage_aks_network)
 
+    if k8gb_enabled or argocd_enabled:
+        _emit_aks_usage(
+            rsp, id_val, "usage-envoy-gateway-aks",
+            "helm.m.crossplane.io/v1beta1", "Release",
+            f"{id_val}-envoy-gateway",
+            "Envoy Gateway Release must finish uninstalling before the AKS cluster is deleted",
+            config)
+        for cr_name in ("envoy-proxy-config", "gateway-class"):
+            _emit_aks_usage(
+                rsp, id_val, f"usage-{cr_name}-aks",
+                "kubernetes.m.crossplane.io/v1alpha1", "Object",
+                f"{id_val}-{cr_name}",
+                f"Envoy Gateway {cr_name} Object must be removed before the AKS cluster is deleted",
+                config)
+
     if k8gb_enabled:
         _emit_aks_usage(
             rsp, id_val, "usage-k8gb-aks",
@@ -149,8 +164,8 @@ def add_usage_resources(rsp, id_val, config, k8gb_enabled=False,
             "ArgoCD Release must finish uninstalling before the AKS cluster is deleted",
             config)
         # Every child-cluster ArgoCD Object also guards the AKS cluster.
-        for cr_name in ("argocd-issuer", "argocd-cert", "argocd-ingress",
-                        "argocd-app"):
+        for cr_name in ("argocd-issuer", "argocd-cert", "argocd-gateway",
+                        "argocd-httproute", "argocd-app"):
             _emit_aks_usage(
                 rsp, id_val, f"usage-{cr_name}-aks",
                 "kubernetes.m.crossplane.io/v1alpha1", "Object",

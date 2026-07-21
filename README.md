@@ -257,9 +257,11 @@ az identity federated-credential create \
 ## Add-ons
 
 Optional platform add-ons layered on top of UXP. **cert-manager** is installed
-unconditionally on every control plane (a free dependency of Knative/k8gb/ArgoCD
-Ingress TLS). **nginx-ingress** is installed only when `k8gb` or `argocd` is
-enabled, so plain control planes do not pay for an idle Azure load balancer.
+unconditionally on every control plane (a free dependency of Knative/k8gb/
+ArgoCD Gateway TLS). The **Envoy Gateway** (Kubernetes Gateway API) data plane
+is installed only when `k8gb` or `argocd` is enabled; unlike the retired
+community ingress-nginx (archived 2026-03-24) it provisions no Azure load
+balancer until a `Gateway` exists, so plain control planes pay nothing.
 
 ### k8gb (global failover)
 
@@ -277,9 +279,10 @@ load-balancer-controller add-on is needed. GSLB is not yet functional end-to-end
 
 ### ArgoCD
 
-When `argocd.enabled: "yes"`, ArgoCD is installed with a UI Ingress
-(`argocd.hostname`, nginx + a self-signed cert-manager Certificate) and a root
-app-of-apps `Application` pointing at the public git repo `argocd.url`. See
+When `argocd.enabled: "yes"`, ArgoCD is installed with a UI exposed via an
+Envoy Gateway `Gateway`/`HTTPRoute` (`argocd.hostname`, TLS terminated with a
+self-signed cert-manager Certificate) and a root app-of-apps `Application`
+pointing at the public git repo `argocd.url`. See
 `examples/controlplane/with-argocd.yaml`.
 
 ## Examples
@@ -293,7 +296,7 @@ See `examples/controlplane/`:
   function runtime.
 * `with-k8gb.yaml` — k8gb global-failover producer (operator + CoreDNS via an
   Azure Standard LB + the `status.controlplane.k8gb` contract).
-* `with-argocd.yaml` — ArgoCD add-on (UI Ingress + root app-of-apps).
+* `with-argocd.yaml` — ArgoCD add-on (UI Gateway/HTTPRoute + root app-of-apps).
 * `uxp-ctp-1.yaml` — opinionated production-style example (5 nodes,
   `Standard_D4s_v3`, 15-min backup schedule).
 

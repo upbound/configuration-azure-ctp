@@ -24,10 +24,11 @@
 ## Goal of this PR
 
 Extend the `ControlPlane` composition so a child AKS cluster gets:
-- **cert-manager** and **nginx-ingress** installed **unconditionally** (always-on),
+- **cert-manager** installed **unconditionally** (always-on); the **Envoy
+  Gateway** HTTP data plane installed when `k8gb.enabled OR argocd.enabled`,
 - **k8gb** (operator + CoreDNS via a native Azure Standard LB) installed when
   `k8gb.enabled`,
-- **ArgoCD** (+ UI Ingress + a root app-of-apps `Application`) when `argocd.enabled`,
+- **ArgoCD** (+ UI Gateway/HTTPRoute + a root app-of-apps `Application`) when `argocd.enabled`,
 - the **status contract** `status.controlplane.k8gb.coreDNSEndpoint` +
   `delegationRecord` surfaced for the FleetGslb aggregator to consume.
 
@@ -73,7 +74,10 @@ Extend the `ControlPlane` composition so a child AKS cluster gets:
 ## Locked decisions
 
 - cert-manager: **always installed** (not gated). Free component; no license gate.
-- nginx-ingress: **always installed** (not gated). *Caveat: provisions an idle
+- nginx-ingress: **Superseded** - replaced by the Envoy Gateway (Gateway API)
+  data plane, gated on `k8gb.enabled OR argocd.enabled` (k8gb is now pinned to
+  v0.20.0). Historical text below, kept for
+  context: **always installed** (not gated). *Caveat: provisions an idle
   Azure LB on baseline control planes that create no Ingress (knative uses its own
   networking, not nginx). If that cost matters, gate behind
   `k8gb.enabled OR argocd.enabled` - open for confirmation.*
@@ -118,6 +122,10 @@ Extend the `ControlPlane` composition so a child AKS cluster gets:
 - Verify: `up project build` + `up test run tests/*`.
 
 ## Step 2 - nginx-ingress (always-on, new)
+
+**Superseded:** replaced by the Envoy Gateway (Gateway API) data plane, gated on
+`k8gb.enabled OR argocd.enabled` (k8gb is now pinned to v0.20.0). Kept below for
+historical context.
 
 - Create `functions/ctp/ingress.py` with `add_ingress_resources(rsp, id_val, config)`:
   an `ingress-nginx` `Release` (repo `https://kubernetes.github.io/ingress-nginx`,

@@ -1,8 +1,8 @@
-"""05b-argo — ArgoCD add-on (UI Ingress + app-of-apps).
+"""05b-argo — ArgoCD add-on (UI Gateway/HTTPRoute + app-of-apps).
 
-Installs ArgoCD on the child cluster, exposes its UI through an nginx Ingress
-with a local (self-signed) cert-manager Certificate, and bootstraps a root
-app-of-apps Application pointing at a public git repo.
+Installs ArgoCD on the child cluster, exposes its UI through an Envoy Gateway
+Gateway/HTTPRoute with a local (self-signed) cert-manager Certificate, and
+bootstraps a root app-of-apps Application pointing at a public git repo.
 
 Gating mirrors the other add-on chains:
 - the self-signed ClusterIssuer + Certificate wait on cert-manager being ready
@@ -11,7 +11,7 @@ Gating mirrors the other add-on chains:
   Application CRD must exist).
 
 The Helm release name is pinned to `argocd` (external-name) so the server
-Service is `argocd-server`, which the Ingress references.
+Service is `argocd-server`, which the HTTPRoute references.
 
 Cloud-agnostic — identical to the AWS sibling.
 """
@@ -40,7 +40,7 @@ def _child_object(id_val, cr_name, manifest):
 
 
 def add_argocd_resources(rsp, id_val, argocd_param, argocd_deployed,
-                         certmanager_ready, config):
+                         certmanager_ready, gateway_ready, config):
     hostname = argocd_param.get("hostname", "")
     url = argocd_param.get("url", "")
 
@@ -72,8 +72,8 @@ def add_argocd_resources(rsp, id_val, argocd_param, argocd_deployed,
                 "skipCreateNamespace": False,
                 "wait": True,
                 "values": {
-                    # nginx terminates TLS; argocd-server serves plain HTTP so
-                    # there is no redirect loop behind the Ingress.
+                    # the Gateway terminates TLS; argocd-server serves plain HTTP
+                    # so there is no redirect loop behind it.
                     "configs": {
                         "params": {
                             "server.insecure": True
@@ -90,45 +90,52 @@ def add_argocd_resources(rsp, id_val, argocd_param, argocd_deployed,
     stamp(release, config)
     resource.update(rsp.desired.resources["argocd-release"], release)
 
-    # UI Ingress (nginx). TLS secret is filled by the Certificate below.
-    ingress = _child_object(id_val, "argocd-ingress", {
-        "apiVersion": "networking.k8s.io/v1",
-        "kind": "Ingress",
-        "metadata": {
-            "name": "argocd-server",
-            "namespace": "argocd",
-            "annotations": {
-                "nginx.ingress.kubernetes.io/backend-protocol": "HTTP"
-            }
-        },
-        "spec": {
-            "ingressClassName": "nginx",
-            "rules": [
-                {
-                    "host": hostname,
-                    "http": {
-                        "paths": [
-                            {
-                                "path": "/",
-                                "pathType": "Prefix",
-                                "backend": {
-                                    "service": {
-                                        "name": "argocd-server",
-                                        "port": {"number": 80}
-                                    }
-                                }
-                            }
-                        ]
+    # UI Gateway (Envoy Gateway). TLS terminates at the Gateway; the HTTPRoute
+    # forwards plain HTTP to argocd-server:80 (server.insecure above avoids a
+    # redirect loop). Both wait on the Envoy Gateway CRDs (gateway_ready).
+    if gateway_ready:
+        gateway = _child_object(id_val, "argocd-gateway", {
+            "apiVersion": "gateway.networking.k8s.io/v1",
+            "kind": "Gateway",
+            "metadata": {"name": "argocd", "namespace": "argocd"},
+            "spec": {
+                "gatewayClassName": "eg",
+                "listeners": [
+                    {
+                        "name": "https",
+                        "protocol": "HTTPS",
+                        "port": 443,
+                        "hostname": hostname,
+                        # explicit same-namespace default (argocd ns only).
+                        "allowedRoutes": {"namespaces": {"from": "Same"}},
+                        "tls": {
+                            "mode": "Terminate",
+                            "certificateRefs": [{"name": "argocd-server-tls"}]
+                        }
                     }
-                }
-            ],
-            "tls": [
-                {"hosts": [hostname], "secretName": "argocd-server-tls"}
-            ]
-        }
-    })
-    stamp(ingress, config)
-    resource.update(rsp.desired.resources["argocd-ingress"], ingress)
+                ]
+            }
+        })
+        stamp(gateway, config)
+        resource.update(rsp.desired.resources["argocd-gateway"], gateway)
+
+        httproute = _child_object(id_val, "argocd-httproute", {
+            "apiVersion": "gateway.networking.k8s.io/v1",
+            "kind": "HTTPRoute",
+            "metadata": {"name": "argocd-server", "namespace": "argocd"},
+            "spec": {
+                # sectionName pins the route to the `https` listener (future-proofs
+                # if a second listener is ever added). name is the Gateway's
+                # metadata.name (`argocd`), not the composition-resource-name.
+                "parentRefs": [{"name": "argocd", "sectionName": "https"}],
+                "hostnames": [hostname],
+                "rules": [
+                    {"backendRefs": [{"name": "argocd-server", "port": 80}]}
+                ]
+            }
+        })
+        stamp(httproute, config)
+        resource.update(rsp.desired.resources["argocd-httproute"], httproute)
 
     # Self-signed issuer + Certificate for the UI (a real global-hostname cert
     # is issued by the parent and synced down later — see gslb-dns §8). Both

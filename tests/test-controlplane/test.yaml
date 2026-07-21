@@ -911,7 +911,7 @@ spec:
 apiVersion: meta.dev.upbound.io/v1alpha1
 kind: CompositionTest
 metadata:
-  name: with-ingress-nginx
+  name: with-envoy-gateway
 spec:
   compositionPath: apis/ctp/composition.yaml
   xrdPath: apis/ctp/definition.yaml
@@ -932,19 +932,57 @@ spec:
           vmSize: Standard_D2s_v3
         argocd:
           enabled: "yes"
-  assertResources:
-  # nginx-ingress installs because an add-on that needs an Ingress (argocd) is
-  # enabled; on baseline control planes it is not rendered.
+  observedResources:
   - apiVersion: helm.m.crossplane.io/v1beta1
     kind: Release
     metadata:
-      name: test-cp-ingress-nginx
+      name: test-cp-envoy-gateway
+      namespace: default
+      annotations:
+        crossplane.io/composition-resource-name: envoy-gateway-release
+    status:
+      atProvider:
+        state: deployed
+  assertResources:
+  - apiVersion: helm.m.crossplane.io/v1beta1
+    kind: Release
+    metadata:
+      name: test-cp-envoy-gateway
     spec:
       forProvider:
         chart:
-          name: ingress-nginx
-          repository: https://kubernetes.github.io/ingress-nginx
-        namespace: ingress-nginx
+          name: gateway-helm
+          repository: oci://docker.io/envoyproxy
+          version: v1.8.2
+        namespace: envoy-gateway-system
+  - apiVersion: kubernetes.m.crossplane.io/v1alpha1
+    kind: Object
+    metadata:
+      name: test-cp-envoy-proxy-config
+    spec:
+      forProvider:
+        manifest:
+          kind: EnvoyProxy
+          spec:
+            provider:
+              type: Kubernetes
+              kubernetes:
+                envoyService:
+                  type: LoadBalancer
+  - apiVersion: kubernetes.m.crossplane.io/v1alpha1
+    kind: Object
+    metadata:
+      name: test-cp-gateway-class
+    spec:
+      forProvider:
+        manifest:
+          kind: GatewayClass
+          spec:
+            controllerName: gateway.envoyproxy.io/gatewayclass-controller
+  - apiVersion: protection.crossplane.io/v1beta1
+    kind: Usage
+    metadata:
+      name: test-cp-usage-envoy-gateway-aks
 ---
 apiVersion: meta.dev.upbound.io/v1alpha1
 kind: CompositionTest
@@ -1012,7 +1050,7 @@ spec:
   - apiVersion: helm.m.crossplane.io/v1beta1
     kind: Release
     metadata:
-      name: test-cp-ingress-nginx
+      name: test-cp-envoy-gateway
   - apiVersion: protection.crossplane.io/v1beta1
     kind: Usage
     metadata:
@@ -1120,22 +1158,10 @@ spec:
           configs:
             params:
               server.insecure: true
-  - apiVersion: kubernetes.m.crossplane.io/v1alpha1
-    kind: Object
-    metadata:
-      name: test-cp-argocd-ingress
-    spec:
-      forProvider:
-        manifest:
-          kind: Ingress
-          spec:
-            ingressClassName: nginx
-            rules:
-            - host: argocd.example.com
   - apiVersion: helm.m.crossplane.io/v1beta1
     kind: Release
     metadata:
-      name: test-cp-ingress-nginx
+      name: test-cp-envoy-gateway
   - apiVersion: protection.crossplane.io/v1beta1
     kind: Usage
     metadata:
@@ -1143,7 +1169,11 @@ spec:
   - apiVersion: protection.crossplane.io/v1beta1
     kind: Usage
     metadata:
-      name: test-cp-usage-argocd-ingress-aks
+      name: test-cp-usage-argocd-gateway-aks
+  - apiVersion: protection.crossplane.io/v1beta1
+    kind: Usage
+    metadata:
+      name: test-cp-usage-argocd-httproute-aks
 ---
 apiVersion: meta.dev.upbound.io/v1alpha1
 kind: CompositionTest
@@ -1194,6 +1224,16 @@ spec:
     status:
       atProvider:
         state: deployed
+  - apiVersion: helm.m.crossplane.io/v1beta1
+    kind: Release
+    metadata:
+      name: test-cp-envoy-gateway
+      namespace: default
+      annotations:
+        crossplane.io/composition-resource-name: envoy-gateway-release
+    status:
+      atProvider:
+        state: deployed
   assertResources:
   - apiVersion: kubernetes.m.crossplane.io/v1alpha1
     kind: Object
@@ -1231,3 +1271,40 @@ spec:
               repoURL: https://github.com/example/apps
               path: "."
               targetRevision: HEAD
+  - apiVersion: kubernetes.m.crossplane.io/v1alpha1
+    kind: Object
+    metadata:
+      name: test-cp-argocd-gateway
+    spec:
+      forProvider:
+        manifest:
+          kind: Gateway
+          spec:
+            gatewayClassName: eg
+            listeners:
+            - name: https
+              protocol: HTTPS
+              port: 443
+              hostname: argocd.example.com
+              tls:
+                mode: Terminate
+                certificateRefs:
+                - name: argocd-server-tls
+  - apiVersion: kubernetes.m.crossplane.io/v1alpha1
+    kind: Object
+    metadata:
+      name: test-cp-argocd-httproute
+    spec:
+      forProvider:
+        manifest:
+          kind: HTTPRoute
+          spec:
+            parentRefs:
+            - name: argocd
+              sectionName: https
+            hostnames:
+            - argocd.example.com
+            rules:
+            - backendRefs:
+              - name: argocd-server
+                port: 80

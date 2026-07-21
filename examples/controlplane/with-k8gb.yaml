@@ -1,6 +1,6 @@
 # ControlPlane with the k8gb add-on enabled. Installs the k8gb operator and
-# CoreDNS exposed via an Azure Standard Load Balancer serving :53, and pulls in
-# nginx-ingress + cert-manager. The XR surfaces
+# CoreDNS exposed via an Azure Standard Load Balancer serving :53, and provisions
+# an Envoy Gateway data plane + cert-manager. The XR surfaces
 # status.controlplane.k8gb.coreDNSEndpoint + delegationRecord for the fleet
 # aggregator (FleetGslb) to consume. See docs/ctp-addons-implementation-plan.md.
 apiVersion: azure.platform.upbound.io/v1alpha1

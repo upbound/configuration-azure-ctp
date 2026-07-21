@@ -2,8 +2,8 @@
 #
 # Spins up a real AKS cluster via the composition and exercises the full stack in
 # one run: UXP + Workload-Identity backup + the k8gb producer (operator + CoreDNS
-# via a native Azure Standard LB) + ArgoCD (UI Ingress + app-of-apps), which also
-# pulls in cert-manager (always-on) and nginx-ingress.
+# via a native Azure Standard LB) + ArgoCD (UI Gateway/HTTPRoute + app-of-apps), which also
+# pulls in cert-manager (always-on) and the Envoy Gateway data plane.
 #
 # WHY ONE TEST: e2e auth uses `source: Upbound` workload-identity federation to the
 # shared AAD app `dare-oidc-provider` (appId bcf40abd-...). Azure federates the
