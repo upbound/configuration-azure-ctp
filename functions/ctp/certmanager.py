@@ -36,7 +36,7 @@ def add_certmanager_resources(rsp, id_val, certmanager_ready, config):
                     "name": "cert-manager",
                     "repository": "https://charts.jetstack.io",
                     # renovate: datasource=helm depName=cert-manager registryUrl=https://charts.jetstack.io
-                    "version": "v1.16.3"
+                    "version": "v1.20.3"
                 },
                 "namespace": "cert-manager",
                 "skipCreateNamespace": False,

@@ -71,6 +71,7 @@ spec:
         chart:
           name: cert-manager
           repository: https://charts.jetstack.io
+          version: v1.20.3
         namespace: cert-manager
   - apiVersion: protection.crossplane.io/v1beta1
     kind: Usage
@@ -652,7 +653,7 @@ spec:
         chart:
           name: cert-manager
           repository: https://charts.jetstack.io
-          version: v1.16.3
+          version: v1.20.3
     status:
       atProvider:
         state: deployed
