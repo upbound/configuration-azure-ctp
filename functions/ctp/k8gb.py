@@ -5,8 +5,10 @@ CoreDNS via an Azure Standard LoadBalancer serving :53, and observes that
 Service so the XR can surface the k8gb status contract (coreDNSEndpoint +
 delegationRecord) for the FleetGslb aggregator to consume.
 
-- Chart pinned to v0.15.0 so the shipped `Gslb` CRD stays `k8gb.absa.oss/v1beta1`,
-  matching configuration-resilient-ctp's consumer — do not blindly track latest.
+- Chart pinned to v0.20.0. `installLegacyCrds: true` (set explicitly below) keeps
+  the `k8gb.absa.oss/v1beta1` `Gslb` CRD group installed alongside the new
+  `k8gb.io/v1beta1`, so configuration-resilient-ctp's consumer contract holds and
+  does not depend on the chart default.
 - `extdns.enabled: false`: this package is a producer only; the parent-side
   FleetGslb writes the NS delegation, not per-child external-dns.
 - CoreDNS is exposed by a plain `type: LoadBalancer` Service; AKS provisions an
@@ -31,6 +33,9 @@ def add_k8gb_resources(rsp, id_val, k8gb_param, geo_tag, ext_geo_tags,
         "k8gb": {
             "deployCrds": True,
             "deployRbac": True,
+            # Explicit (not relying on the chart default): keeps the legacy
+            # k8gb.absa.oss/v1beta1 Gslb CRD for the resilient-ctp consumer.
+            "installLegacyCrds": True,
             "clusterGeoTag": geo_tag,
             "extGslbClustersGeoTags": ext_geo_tags,
             "dnsZones": [
@@ -72,8 +77,8 @@ def add_k8gb_resources(rsp, id_val, k8gb_param, geo_tag, ext_geo_tags,
                     "name": "k8gb",
                     "repository": "https://www.k8gb.io",
                     # renovate: datasource=helm depName=k8gb registryUrl=https://www.k8gb.io
-                    # Pinned: the Gslb CRD version is the producer/consumer contract.
-                    "version": "v0.15.0"
+                    # Pinned: Gslb CRD group is the producer/consumer contract; legacy CRDs stay on.
+                    "version": "v0.20.0"
                 },
                 "namespace": "k8gb",
                 "skipCreateNamespace": False,

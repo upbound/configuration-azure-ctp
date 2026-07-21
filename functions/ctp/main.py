@@ -160,7 +160,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                         argocd_enabled=argocd_enabled)
 
     # cert-manager is always installed (free component, no license gate) so the
-    # k8gb/argocd add-ons can rely on it for Ingress TLS independently of knative.
+    # k8gb/argocd add-ons can rely on it for Gateway TLS independently of knative.
     add_certmanager_resources(rsp, id_val, certmanager_ready, config)
 
     # Envoy Gateway is installed only when an add-on needs an HTTP data plane, so

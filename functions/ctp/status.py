@@ -111,11 +111,16 @@ def update_status(rsp, id_val, params, uxp_version, uxp_deployed, backup,
             if endpoint:
                 dns_zone = k8gb.get("dnsZone", "")
                 parent_zone = k8gb.get("parentZone", "")
-                # k8gb NS-delegation convention (v0.15.0): the per-cluster NS is
-                # gslb-ns-<loadBalancedZone dashed>-<geoTag> under the parent
-                # zone; the glue A points it at the CoreDNS endpoint. This is the
-                # contract FleetGslb consumes — keep it aligned with k8gb.
-                ns_name = f"gslb-ns-{dns_zone.replace('.', '-')}-{k8gb_geo_tag}.{parent_zone}"
+                # k8gb getNsName (byte-identical v0.15.0..v0.20.0): strip the
+                # ".<parentZone>" suffix from the load-balanced zone, replace the
+                # remaining dots with dashes, and place the geo tag BEFORE the
+                # domain component. This is the contract FleetGslb consumes.
+                zone_label = dns_zone
+                suffix = f".{parent_zone}"
+                if zone_label.endswith(suffix):
+                    zone_label = zone_label[: -len(suffix)]
+                zone_label = zone_label.replace(".", "-")
+                ns_name = f"gslb-ns-{k8gb_geo_tag}-{zone_label}.{parent_zone}"
                 k8gb_status["coreDNSEndpoint"] = endpoint
                 k8gb_status["delegationRecord"] = (
                     f"{dns_zone}. NS {ns_name}. ; {ns_name}. A {endpoint}"

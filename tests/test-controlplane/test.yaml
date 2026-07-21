@@ -980,10 +980,23 @@ spec:
           kind: GatewayClass
           spec:
             controllerName: gateway.envoyproxy.io/gatewayclass-controller
+            parametersRef:
+              group: gateway.envoyproxy.io
+              kind: EnvoyProxy
+              name: eg-proxy
+              namespace: envoy-gateway-system
   - apiVersion: protection.crossplane.io/v1beta1
     kind: Usage
     metadata:
       name: test-cp-usage-envoy-gateway-aks
+  - apiVersion: protection.crossplane.io/v1beta1
+    kind: Usage
+    metadata:
+      name: test-cp-usage-envoy-proxy-config-aks
+  - apiVersion: protection.crossplane.io/v1beta1
+    kind: Usage
+    metadata:
+      name: test-cp-usage-gateway-class-aks
 ---
 apiVersion: meta.dev.upbound.io/v1alpha1
 kind: CompositionTest
@@ -1023,11 +1036,12 @@ spec:
         chart:
           name: k8gb
           repository: https://www.k8gb.io
-          version: v0.15.0
+          version: v0.20.0
         namespace: k8gb
         values:
           k8gb:
             clusterGeoTag: azure-eastus-test-cp
+            installLegacyCrds: true
             dnsZones:
             - loadBalancedZone: gslb.example.com
               parentZone: example.com
@@ -1114,7 +1128,7 @@ spec:
         k8gb:
           enabled: "yes"
           coreDNSEndpoint: 20.1.2.3
-          delegationRecord: "gslb.example.com. NS gslb-ns-gslb-example-com-azure-eastus-test-cp.example.com. ; gslb-ns-gslb-example-com-azure-eastus-test-cp.example.com. A 20.1.2.3"
+          delegationRecord: "gslb.example.com. NS gslb-ns-azure-eastus-test-cp-gslb.example.com. ; gslb-ns-azure-eastus-test-cp-gslb.example.com. A 20.1.2.3"
 ---
 apiVersion: meta.dev.upbound.io/v1alpha1
 kind: CompositionTest
