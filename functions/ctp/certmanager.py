@@ -2,7 +2,7 @@
 
 cert-manager is installed unconditionally on every control plane (decoupled
 from the knative/license gates it used to live behind): the k8gb and ArgoCD
-add-ons need it for Ingress TLS regardless of whether knative is enabled. Its
+add-ons need it for Gateway TLS regardless of whether knative is enabled. Its
 readiness is surfaced separately so those add-ons never couple to knative.
 
 Cloud-agnostic — identical to the AWS sibling.
@@ -36,7 +36,7 @@ def add_certmanager_resources(rsp, id_val, certmanager_ready, config):
                     "name": "cert-manager",
                     "repository": "https://charts.jetstack.io",
                     # renovate: datasource=helm depName=cert-manager registryUrl=https://charts.jetstack.io
-                    "version": "v1.16.3"
+                    "version": "v1.20.3"
                 },
                 "namespace": "cert-manager",
                 "skipCreateNamespace": False,

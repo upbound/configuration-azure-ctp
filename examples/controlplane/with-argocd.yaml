@@ -1,6 +1,7 @@
-# ControlPlane with the ArgoCD add-on enabled. Installs ArgoCD with a UI Ingress
-# (nginx + a self-signed cert-manager Certificate) and a root app-of-apps
-# Application pointing at a public git repo. Pulls in nginx-ingress + cert-manager.
+# ControlPlane with the ArgoCD add-on enabled. Installs ArgoCD with a UI exposed
+# via Envoy Gateway (Gateway + HTTPRoute + a self-signed cert-manager Certificate)
+# and a root app-of-apps Application pointing at a public git repo. Provisions
+# Envoy Gateway + cert-manager.
 apiVersion: azure.platform.upbound.io/v1alpha1
 kind: ControlPlane
 metadata:
