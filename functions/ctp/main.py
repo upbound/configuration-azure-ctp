@@ -66,6 +66,16 @@ from .vpa import add_vpa_resources
 from .workload_identity import add_workload_identity_resources
 
 
+# managementMode -> Crossplane managementPolicies. Provision and ObserveOnly
+# never include Delete, so the provisioned control plane is orphaned (never torn
+# down) when the XR is removed; Full manages the whole lifecycle incl. deletion.
+_MODE_POLICIES = {
+    "Provision": ["Observe", "Create", "Update", "LateInitialize"],
+    "ObserveOnly": ["Observe"],
+    "Full": ["*"],
+}
+
+
 def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     """Main composition function entry point."""
     config = {
@@ -86,7 +96,8 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     backup = params.get("backup", {"enabled": "no"})
     install_from = backup.get("installFrom")
     license_param = params.get("license")
-    mgmt_policies = params.get("managementPolicies", ["*"])
+    management_mode = params.get("managementMode", "Full")
+    mgmt_policies = _MODE_POLICIES.get(management_mode, _MODE_POLICIES["Full"])
     uxp_version = params.get("uxp", {}).get("version", "2.2.1-up.1")
     vpa = params.get("providerVerticalPodAutoscaling")
     knative = params.get("knative")
@@ -206,6 +217,21 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
        (knative and knative.get("enabled") == "yes" and knative_fully_ready):
         add_runtime_config(rsp, id_val, vpa, knative, vpa_ready,
                           knative_fully_ready, config)
+
+    # --- Comprehensive orphan policy ---
+    # Every composed managed resource (Helm Release, provider-kubernetes Object,
+    # and Azure MRs all carry spec.forProvider) inherits mgmt_policies, so
+    # Provision/ObserveOnly never delete the provisioned control plane on
+    # teardown. Resources with an explicit policy (backup storage, k8gb CoreDNS
+    # observe, knative serving) and composed XRs / Usage guards (no forProvider)
+    # are left untouched.
+    for _name in list(rsp.desired.resources.keys()):
+        _res = resource.struct_to_dict(rsp.desired.resources[_name].resource)
+        _spec = _res.get("spec", {})
+        if "forProvider" not in _spec or "managementPolicies" in _spec:
+            continue
+        _res["spec"]["managementPolicies"] = mgmt_policies
+        resource.update(rsp.desired.resources[_name], _res)
 
     update_status(rsp, id_val, params, uxp_version, uxp_deployed, backup,
                  client_id, backup.get("location", ""), observed_resources,
