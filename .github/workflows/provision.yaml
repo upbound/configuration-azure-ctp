@@ -1,0 +1,104 @@
+name: Provision Control Planes
+
+# Provisions / updates / decommissions the persistent AKS+UXP control planes
+# declared under controlplanes/. Each control plane's managementMode (in its own
+# file) decides its lifecycle: Provision/ObserveOnly are reconciled and orphaned;
+# Full is decommissioned. A single job runs two Python E2E tests on a disposable
+# local KIND (up test run --e2e --local) - one over the non-Full control planes,
+# one over the Full ones (kept alive + polled until Azure drains). No Upbound, no
+# templating. Manual trigger only.
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  provision:
+    # ubuntu-latest ships Docker, which KIND (the --local control plane) needs.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      # --local uses public deps and no Upbound control plane, so skip login -
+      # otherwise action-up requires api-token. Add `with: {api-token,
+      # organization}` (and drop skip-login) only if a private package is needed.
+      - name: Install up CLI
+        uses: upbound/action-up@53fe6395637d884c80d2bbc8c2d75d0ece776ced # v1
+        with:
+          skip-login: true
+
+      # The Python E2E tests import the generated models (.up/python), which are
+      # git-ignored - build first so up test can discover them in a fresh checkout.
+      - name: Build project
+        run: up project build
+
+      # Classify each controlplanes/*.yaml by its explicit managementMode so we
+      # only run the pass that has work: reconcile (Provision/ObserveOnly) and/or
+      # decommission (Full). A file without an explicit managementMode defaults to
+      # Full at the XRD, but the pipeline ignores it - dynamic provisioning acts
+      # only on explicit intent, so a stray file can't trigger a decommission.
+      - name: Classify control planes
+        id: scope
+        run: |
+          reconcile=false
+          decommission=false
+          for f in controlplanes/*.yaml; do
+            [ -f "$f" ] || continue
+            if grep -qE '^[[:space:]]*managementMode:[[:space:]]*Full([[:space:]]|$)' "$f"; then
+              decommission=true
+            elif grep -qE '^[[:space:]]*managementMode:[[:space:]]*(Provision|ObserveOnly)([[:space:]]|$)' "$f"; then
+              reconcile=true
+            else
+              echo "WARNING: $f has no explicit managementMode - ignored by the provisioning pipeline"
+            fi
+          done
+          echo "reconcile=$reconcile" >> "$GITHUB_OUTPUT"
+          echo "decommission=$decommission" >> "$GITHUB_OUTPUT"
+          echo "reconcile=$reconcile decommission=$decommission"
+
+      # Reconcile the non-Full control planes; they orphan on teardown.
+      # tests/provision/reconcile loads them from controlplanes/.
+      - name: Reconcile
+        if: steps.scope.outputs.reconcile == 'true'
+        env:
+          UP_CLOUD_CREDENTIALS: ${{ secrets.AZURE_CREDS }}   # base64-encoded SP JSON
+        run: up test run tests/provision/reconcile --e2e --local
+
+      # Decommission the Full control planes. up test returns as soon as the XRs
+      # are background-GC'd, so keep KIND (--skip-control-plane-cleanup) and poll
+      # until Crossplane finishes the Azure delete cascade. This run has only Full
+      # control planes, so "all managed gone" is the correct completion signal.
+      - name: Decommission
+        if: steps.scope.outputs.decommission == 'true'
+        env:
+          UP_CLOUD_CREDENTIALS: ${{ secrets.AZURE_CREDS }}   # base64-encoded SP JSON
+        run: |
+          up test run tests/provision/decommission --e2e --local --skip-control-plane-cleanup
+          # The loop does its own error handling; disable errexit so a benign
+          # non-zero (grep -c counting 0 once teardown is done, a transient query
+          # miss) doesn't fail the step. up test above still ran under errexit.
+          set +e
+          echo "Waiting for Crossplane to finish the Azure delete cascade (max ~20 min)..."
+          seen=0
+          for i in $(seq 1 20); do
+            sleep 60
+            node=$(docker ps --filter name=control-plane --format '{{.Names}}' | head -n1)
+            out=$(docker exec "$node" kubectl --kubeconfig /etc/kubernetes/admin.conf get managed -A --no-headers 2>/dev/null)
+            if [ $? -ne 0 ]; then
+              echo "[$i/20] control plane not queryable yet; still waiting"
+              continue
+            fi
+            remaining=$(printf '%s\n' "$out" | grep -c .)
+            echo "[$i/20] managed resources still terminating: $remaining"
+            printf '%s\n' "$out" | grep . | awk '{print "            - "$1" "$2}'
+            if [ "$remaining" -gt 0 ]; then
+              seen=1
+            elif [ "$seen" -eq 1 ]; then
+              echo "All managed resources gone - Azure teardown complete."
+              break
+            fi
+          done
+          echo "Decommission wait finished (teardown done or ~20 min ceiling; any remainder finishes server-side)."
