@@ -85,9 +85,23 @@ if creds and controlplanes:
                 extraResources=[azure_secret, azure_providerconfig],
                 skipDelete=False,
                 timeoutSeconds=5400,
+                # Deprovision teardown drives a ~15-min Azure cascade; the 600s
+                # default would cut cleanup off mid-teardown. Reconcile only
+                # orphans (fast), so it keeps the default.
+                cleanupTimeoutSeconds=1800 if DECOMMISSION else 600,
             ),
         )
         items = [test.model_dump(by_alias=True, exclude_none=True)]
+
+# An empty set here is a contradiction: the classify step only runs a pass when it
+# found a matching file, so zero manifests means the secret is missing or
+# controlplanes/ was not found. Fail loud - up test --e2e treats an empty test set
+# as a green no-op, the worst failure mode for a provisioning pipeline.
+if not items:
+    raise SystemExit(
+        "refusing to emit an empty test set - "
+        f"creds={'set' if creds else 'MISSING'}, controlplanes={controlplanes}"
+    )
 
 # The test runner expects an "items" array, one entry per test.
 print(yaml.dump({"items": items}))

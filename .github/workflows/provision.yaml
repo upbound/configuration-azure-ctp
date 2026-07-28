@@ -4,12 +4,21 @@ name: Provision Control Planes
 # declared under controlplanes/. Each control plane's managementMode (in its own
 # file) decides its lifecycle: Provision/ObserveOnly are reconciled and orphaned;
 # Deprovision is decommissioned. A single job runs two Python E2E tests on a disposable
-# local KIND (up test run --e2e --local) - one over the non-Full control planes,
-# one over the Full ones (kept alive + polled until Azure drains). No Upbound, no
+# local KIND (up test run --e2e --local) - one over the Provision/ObserveOnly control
+# planes, one over the Deprovision ones (kept alive + polled until Azure drains). No Upbound, no
 # templating. Manual trigger only.
 
 on:
   workflow_dispatch: {}
+
+# Adoption is by Azure resource name (parameters.id), so two dispatches would
+# reconcile the same resources at once, or a reconcile would interleave with a
+# decommission of the same control plane. cancel-in-progress: false on purpose -
+# cancelling a decommission mid-cascade is worse than queueing behind it, since
+# the runner (and Crossplane with it) dies before the deletes are issued.
+concurrency:
+  group: provision-controlplanes
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -47,19 +56,24 @@ jobs:
           decommission=false
           for f in controlplanes/*.yaml; do
             [ -f "$f" ] || continue
-            if grep -qE '^[[:space:]]*managementMode:[[:space:]]*Deprovision([[:space:]]|$)' "$f"; then
-              decommission=true
-            elif grep -qE '^[[:space:]]*managementMode:[[:space:]]*(Provision|ObserveOnly)([[:space:]]|$)' "$f"; then
-              reconcile=true
-            else
-              echo "WARNING: $f has no pipeline managementMode (Provision/ObserveOnly/Deprovision) - ignored (Full/none is standard, not a pipeline action)"
-            fi
+            # Read the managementMode value tolerant of quotes and trailing
+            # comments, so it classifies the same as the YAML parser the Python
+            # generators use - bare Deprovision and "Deprovision" must not disagree.
+            line=$(grep -E '^[[:space:]]*managementMode:' "$f" | head -n1 || true)
+            mode=${line#*:}
+            mode=${mode%%#*}
+            mode=$(printf '%s' "$mode" | tr -d "\"' ")
+            case "$mode" in
+              Deprovision) decommission=true ;;
+              Provision|ObserveOnly) reconcile=true ;;
+              *) echo "WARNING: $f has no pipeline managementMode (Provision/ObserveOnly/Deprovision) - ignored (Full/none is standard, not a pipeline action)" ;;
+            esac
           done
           echo "reconcile=$reconcile" >> "$GITHUB_OUTPUT"
           echo "decommission=$decommission" >> "$GITHUB_OUTPUT"
           echo "reconcile=$reconcile decommission=$decommission"
 
-      # Reconcile the non-Full control planes; they orphan on teardown.
+      # Reconcile the Provision/ObserveOnly control planes; they orphan on teardown.
       # tests/provision/reconcile loads them from controlplanes/.
       - name: Reconcile
         if: steps.scope.outputs.reconcile == 'true'
@@ -77,28 +91,49 @@ jobs:
           UP_CLOUD_CREDENTIALS: ${{ secrets.AZURE_CREDS }}   # base64-encoded SP JSON
         run: |
           up test run tests/provision/decommission --e2e --local --skip-control-plane-cleanup
-          # The loop does its own error handling; disable errexit so a benign
-          # non-zero (grep -c counting 0 once teardown is done, a transient query
-          # miss) doesn't fail the step. up test above still ran under errexit.
-          set +e
-          echo "Waiting for Crossplane to finish the Azure delete cascade (max ~20 min)..."
-          seen=0
-          for i in $(seq 1 20); do
+
+          # Capture the KIND node once. Both passes can run in this same job, so a
+          # leaked reconcile container must not be picked up mid-loop.
+          node=$(docker ps --filter name=control-plane --format '{{.Names}}' | head -n1 || true)
+          if [ -z "$node" ]; then
+            echo "::error::no KIND control-plane container found - cannot verify teardown"
+            exit 1
+          fi
+
+          # Runs under the default errexit+pipefail. grep -c returns non-zero on a
+          # zero count, so both grep calls are guarded with || true - a benign miss
+          # must not fail the step; a genuinely stuck teardown is caught at the
+          # ceiling below (a hard failure, not a reassuring message).
+          echo "Waiting for Crossplane to finish the Azure delete cascade (max ~30 min)..."
+          zeros=0
+          for i in $(seq 1 30); do
             sleep 60
-            node=$(docker ps --filter name=control-plane --format '{{.Names}}' | head -n1)
-            out=$(docker exec "$node" kubectl --kubeconfig /etc/kubernetes/admin.conf get managed -A --no-headers 2>/dev/null)
-            if [ $? -ne 0 ]; then
-              echo "[$i/20] control plane not queryable yet; still waiting"
+            if ! out=$(docker exec "$node" kubectl --kubeconfig /etc/kubernetes/admin.conf get managed -A --no-headers 2>/dev/null); then
+              echo "[$i/30] control plane not queryable yet; still waiting"
+              zeros=0
               continue
             fi
-            remaining=$(printf '%s\n' "$out" | grep -c .)
-            echo "[$i/20] managed resources still terminating: $remaining"
-            printf '%s\n' "$out" | grep . | awk '{print "            - "$1" "$2}'
-            if [ "$remaining" -gt 0 ]; then
-              seen=1
-            elif [ "$seen" -eq 1 ]; then
-              echo "All managed resources gone - Azure teardown complete."
-              break
+            remaining=$(printf '%s\n' "$out" | grep -c . || true)
+            echo "[$i/30] managed resources still terminating: $remaining"
+            printf '%s\n' "$out" | grep . | awk '{print "            - "$1" "$2}' || true
+            if [ "$remaining" -eq 0 ]; then
+              # Require two consecutive empty polls: a single one can also mean the
+              # delete has not been issued yet (what the old seen flag reached for).
+              zeros=$((zeros + 1))
+              if [ "$zeros" -ge 2 ]; then
+                echo "No managed resources left in the control plane."
+                break
+              fi
+            else
+              zeros=0
             fi
           done
-          echo "Decommission wait finished (teardown done or ~20 min ceiling; any remainder finishes server-side)."
+
+          if [ "$zeros" -lt 2 ]; then
+            echo "::error::managed resources still present at the ceiling. The runner is about to be destroyed along with KIND and Crossplane, so any delete Crossplane has not already issued to Azure will never happen. Finish manually: az group delete -n <id>-rg"
+            exit 1
+          fi
+          # An empty `kubectl get managed` only means the MRs left the cluster - the
+          # same thing that happens when a resource without a Delete policy is
+          # orphaned. It is not proof the Azure objects are gone.
+          echo "Control plane drained. Confirm on the Azure side: az group show -n <id>-rg"
