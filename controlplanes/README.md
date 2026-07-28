@@ -10,7 +10,7 @@ mode (a file without a `managementMode` is ignored by both):
 
 - **reconcile** - control planes set to `Provision` or `ObserveOnly`:
   created/adopted/updated, then orphaned on teardown.
-- **decommission** - control planes set to `Full`: adopted, then deleted (Azure
+- **decommission** - control planes set to `Deprovision`: adopted, then deleted (Azure
   torn down).
 
 `tests/provision/reconcile` and `tests/provision/decommission` (Python E2E tests)
@@ -25,9 +25,9 @@ each load this folder and keep only their subset. The credential comes from
   instead of adopting the existing one.
 - `parameters.managementMode` (required here): `Provision` (create + adopt +
   update, never delete - the steady state for a persistent control plane),
-  `ObserveOnly` (adopt + watch, no changes), `Full` (decommission - see below).
-  Omitting it defaults to `Full` at the XRD, but the pipeline ignores a file with
-  no explicit mode - always set one.
+  `ObserveOnly` (adopt + watch, no changes), `Deprovision` (decommission - see below).
+  Omitting it defaults to `Full` at the XRD (standard lifecycle, not acted on by the
+  pipeline), so always set an explicit mode here.
 - Immutable AKS fields (`nodes.vmSize`, `nodes.availabilityZones`) reprovision via
   the backup + `installFrom` path, not in place.
 
@@ -46,9 +46,9 @@ into the container), then run the pass you want:
     up test run tests/provision/reconcile    --e2e --local   # Provision/ObserveOnly
     up test run tests/provision/decommission --e2e --local --skip-control-plane-cleanup
 
-## Decommission (`managementMode: Full`)
+## Decommission (`managementMode: Deprovision`)
 
-Set a control plane's `managementMode` to `Full`, then run the decommission pass.
+Set a control plane's `managementMode` to `Deprovision`, then run the decommission pass.
 `up test`'s delete phase returns as soon as the composite XR is
 background-collected (< 1s), long before the ~15-min Azure cascade
 (add-ons/releases -> AKS -> network -> resource group) finishes, so keep KIND

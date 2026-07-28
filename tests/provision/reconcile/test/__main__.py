@@ -1,4 +1,4 @@
-"""E2E test: reconcile the non-Full control planes under controlplanes/.
+"""E2E test: reconcile the Provision/ObserveOnly control planes under controlplanes/.
 
 Loads every controlplanes/*.yaml, keeps those whose managementMode is explicitly
 Provision or ObserveOnly, and builds one E2ETest that provisions/adopts them -
@@ -16,7 +16,7 @@ import yaml
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as k8s
 from models.io.upbound.dev.meta.e2etest import v1alpha1 as e2etest
 
-# False -> Provision/ObserveOnly control planes; True -> only the Full ones.
+# False -> Provision/ObserveOnly control planes; True -> only the Deprovision ones.
 # A file without an explicit managementMode is ignored by both passes.
 DECOMMISSION = False
 
@@ -43,7 +43,7 @@ if creds and controlplanes:
         )
         # Act only on an explicit mode; a file without managementMode defaults to
         # Full at the XRD but is ignored here (same guard as provision.yaml).
-        wanted = (mode == "Full") if DECOMMISSION else (mode in ("Provision", "ObserveOnly"))
+        wanted = (mode == "Deprovision") if DECOMMISSION else (mode in ("Provision", "ObserveOnly"))
         if not wanted:
             continue
         manifests.append(control_plane)

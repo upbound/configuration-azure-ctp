@@ -3,7 +3,7 @@ name: Provision Control Planes
 # Provisions / updates / decommissions the persistent AKS+UXP control planes
 # declared under controlplanes/. Each control plane's managementMode (in its own
 # file) decides its lifecycle: Provision/ObserveOnly are reconciled and orphaned;
-# Full is decommissioned. A single job runs two Python E2E tests on a disposable
+# Deprovision is decommissioned. A single job runs two Python E2E tests on a disposable
 # local KIND (up test run --e2e --local) - one over the non-Full control planes,
 # one over the Full ones (kept alive + polled until Azure drains). No Upbound, no
 # templating. Manual trigger only.
@@ -37,7 +37,7 @@ jobs:
 
       # Classify each controlplanes/*.yaml by its explicit managementMode so we
       # only run the pass that has work: reconcile (Provision/ObserveOnly) and/or
-      # decommission (Full). A file without an explicit managementMode defaults to
+      # decommission (Deprovision). A file without an explicit managementMode defaults to
       # Full at the XRD, but the pipeline ignores it - dynamic provisioning acts
       # only on explicit intent, so a stray file can't trigger a decommission.
       - name: Classify control planes
@@ -47,12 +47,12 @@ jobs:
           decommission=false
           for f in controlplanes/*.yaml; do
             [ -f "$f" ] || continue
-            if grep -qE '^[[:space:]]*managementMode:[[:space:]]*Full([[:space:]]|$)' "$f"; then
+            if grep -qE '^[[:space:]]*managementMode:[[:space:]]*Deprovision([[:space:]]|$)' "$f"; then
               decommission=true
             elif grep -qE '^[[:space:]]*managementMode:[[:space:]]*(Provision|ObserveOnly)([[:space:]]|$)' "$f"; then
               reconcile=true
             else
-              echo "WARNING: $f has no explicit managementMode - ignored by the provisioning pipeline"
+              echo "WARNING: $f has no pipeline managementMode (Provision/ObserveOnly/Deprovision) - ignored (Full/none is standard, not a pipeline action)"
             fi
           done
           echo "reconcile=$reconcile" >> "$GITHUB_OUTPUT"
@@ -67,9 +67,9 @@ jobs:
           UP_CLOUD_CREDENTIALS: ${{ secrets.AZURE_CREDS }}   # base64-encoded SP JSON
         run: up test run tests/provision/reconcile --e2e --local
 
-      # Decommission the Full control planes. up test returns as soon as the XRs
+      # Decommission the Deprovision control planes. up test returns as soon as the XRs
       # are background-GC'd, so keep KIND (--skip-control-plane-cleanup) and poll
-      # until Crossplane finishes the Azure delete cascade. This run has only Full
+      # until Crossplane finishes the Azure delete cascade. This run has only Deprovision
       # control planes, so "all managed gone" is the correct completion signal.
       - name: Decommission
         if: steps.scope.outputs.decommission == 'true'

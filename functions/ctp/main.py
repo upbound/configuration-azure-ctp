@@ -68,11 +68,14 @@ from .workload_identity import add_workload_identity_resources
 
 # managementMode -> Crossplane managementPolicies. Provision and ObserveOnly
 # never include Delete, so the provisioned control plane is orphaned (never torn
-# down) when the XR is removed; Full manages the whole lifecycle incl. deletion.
+# down) when the XR is removed; Full and Deprovision share the full lifecycle
+# incl. deletion - Full is the standard default, Deprovision is the provisioning
+# pipeline's explicit decommission signal.
 _MODE_POLICIES = {
     "Provision": ["Observe", "Create", "Update", "LateInitialize"],
     "ObserveOnly": ["Observe"],
     "Full": ["*"],
+    "Deprovision": ["*"],
 }
 
 

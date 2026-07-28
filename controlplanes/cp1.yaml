@@ -1,7 +1,7 @@
 # One persistent control plane, declared as a ControlPlane XR (the desired
 # state). The provisioning pipeline loads every file in this folder; each file's
 # managementMode decides its lifecycle - Provision/ObserveOnly are reconciled and
-# orphaned, Full is decommissioned (deleted). Copy this file to add another.
+# orphaned, Deprovision is decommissioned (deleted). Copy this file to add another.
 #
 # Keep `id` short/lowercase - it drives the Azure names ({id}-rg, {id}-vnet,
 # {id}-sn, {id}-aks) and is how the decommission poll tracks teardown.
@@ -13,7 +13,7 @@ spec:
   parameters:
     id: azctpcp1
     # REQUIRED for the pipeline: Provision (create+adopt+update, orphan) /
-    # ObserveOnly (watch, orphan) / Full (decommission - delete). Omitting it
+    # ObserveOnly (watch, orphan) / Deprovision (decommission - delete). Omitting it
     # defaults to Full, so a persistent control plane must set Provision.
     managementMode: Provision
     location: eastus

@@ -1,8 +1,8 @@
-"""E2E test: decommission the Full control planes under controlplanes/.
+"""E2E test: decommission the Deprovision control planes under controlplanes/.
 
-Loads every controlplanes/*.yaml, keeps only those with managementMode explicitly Full,
+Loads every controlplanes/*.yaml, keeps only those with managementMode explicitly Deprovision,
 and builds one E2ETest that adopts them and then deletes them (Crossplane
-cascades the Azure teardown). Because this run contains only Full control planes,
+cascades the Azure teardown). Because this run contains only Deprovision control planes,
 provision.yaml can keep KIND alive and simply poll until no managed resources
 remain. The credential comes from UP_CLOUD_CREDENTIALS, which up test injects
 into the (otherwise isolated) test container. See
@@ -17,7 +17,7 @@ import yaml
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as k8s
 from models.io.upbound.dev.meta.e2etest import v1alpha1 as e2etest
 
-# False -> Provision/ObserveOnly control planes; True -> only the Full ones.
+# False -> Provision/ObserveOnly control planes; True -> only the Deprovision ones.
 # A file without an explicit managementMode is ignored by both passes.
 DECOMMISSION = True
 
@@ -44,7 +44,7 @@ if creds and controlplanes:
         )
         # Act only on an explicit mode; a file without managementMode defaults to
         # Full at the XRD but is ignored here (same guard as provision.yaml).
-        wanted = (mode == "Full") if DECOMMISSION else (mode in ("Provision", "ObserveOnly"))
+        wanted = (mode == "Deprovision") if DECOMMISSION else (mode in ("Provision", "ObserveOnly"))
         if not wanted:
             continue
         manifests.append(control_plane)

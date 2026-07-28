@@ -344,11 +344,8 @@ Each control plane's lifecycle is driven by its own
 `spec.parameters.managementMode`:
 
 - `Full` (default): the standard Crossplane lifecycle including deletion, and what
-  you get if you omit `managementMode`. An **explicit** `Full` is the pipeline's
-  decommission signal - the resources are deleted. `up test`'s teardown returns
-  before the ~15-min Azure cascade finishes, so the pipeline keeps KIND alive
-  (`--skip-control-plane-cleanup`) and polls until it drains; `az group delete -n
-  <id>-rg` is the blunt alternative.
+  you get if you omit `managementMode`. The provisioning pipeline does not act on
+  it - a plain control plane behaves like any other managed resource.
 - `Provision`: create + adopt + update, never delete - opt in for a persistent
   control plane. With the deterministic `id`, a run create-or-adopts every resource
   by name, reconciles it to the XR, and orphans it all on teardown. State lives in
@@ -356,12 +353,17 @@ Each control plane's lifecycle is driven by its own
   next run re-adopts by `id` and applies any changes.
 - `ObserveOnly`: adopt and watch without changing anything (safe take-over), also
   orphaned on teardown.
+- `Deprovision`: the same full lifecycle as `Full`, but the pipeline's explicit
+  decommission signal - the resources are deleted. `up test`'s teardown returns
+  before the ~15-min Azure cascade finishes, so the pipeline keeps KIND alive
+  (`--skip-control-plane-cleanup`) and polls until it drains; `az group delete -n
+  <id>-rg` is the blunt alternative.
 
 Declare one control plane per file under `controlplanes/<name>.yaml` (just the
 `ControlPlane` XR, with its `managementMode`). Two Python E2E tests load this
 folder and split it by explicit mode: `tests/provision/reconcile` takes the
 `Provision`/`ObserveOnly` control planes (provision/adopt/orphan) and
-`tests/provision/decommission` takes the `Full` ones (adopt then delete). A file
+`tests/provision/decommission` takes the `Deprovision` ones (adopt then delete). A file
 without an explicit `managementMode` is ignored by both passes, so a stray file
 can't trigger an accidental decommission. Each builds a `source: Secret`
 ProviderConfig plus the `azure-creds` Secret from `UP_CLOUD_CREDENTIALS` (which
