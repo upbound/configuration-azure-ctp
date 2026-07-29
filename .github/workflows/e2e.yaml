@@ -49,6 +49,6 @@ jobs:
 
       - name: Run e2e tests
         # Only the correctness test runs on the shared cloud control plane; the
-        # provisioning test (tests/e2etest-provision) runs on local KIND via
+        # provisioning tests (tests/provision/*) run on local KIND via
         # provision.yaml, never here.
         run: up test run tests/e2etest-controlplane --e2e

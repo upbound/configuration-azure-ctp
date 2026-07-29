@@ -58,5 +58,5 @@ alive with `--skip-control-plane-cleanup` and wait until it drains:
     kubectl get managed -A   # repeat until empty
 
 `.github/workflows/provision.yaml` does this automatically: it polls the
-kept-alive KIND until no managed resources remain (~20-min ceiling). Blunt
+kept-alive KIND until no managed resources remain (~30-min ceiling). Blunt
 alternative: `az group delete -n <id>-rg`.

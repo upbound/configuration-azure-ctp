@@ -56,13 +56,11 @@ jobs:
           decommission=false
           for f in controlplanes/*.yaml; do
             [ -f "$f" ] || continue
-            # Read the managementMode value tolerant of quotes and trailing
-            # comments, so it classifies the same as the YAML parser the Python
-            # generators use - bare Deprovision and "Deprovision" must not disagree.
-            line=$(grep -E '^[[:space:]]*managementMode:' "$f" | head -n1 || true)
-            mode=${line#*:}
-            mode=${mode%%#*}
-            mode=$(printf '%s' "$mode" | tr -d "\"' ")
+            # Parse with yq so classification agrees with the generators'
+            # yaml.safe_load by construction: same path, same YAML semantics
+            # (flow mappings, quoted scalars, comments). yq is already used in
+            # ci.yaml and ships on ubuntu-latest.
+            mode=$(yq '.spec.parameters.managementMode // ""' "$f")
             case "$mode" in
               Deprovision) decommission=true ;;
               Provision|ObserveOnly) reconcile=true ;;
