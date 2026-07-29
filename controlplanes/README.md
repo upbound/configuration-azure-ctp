@@ -60,3 +60,24 @@ alive with `--skip-control-plane-cleanup` and wait until it drains:
 `.github/workflows/provision.yaml` does this automatically: it polls the
 kept-alive KIND until no managed resources remain (~30-min ceiling). Blunt
 alternative: `az group delete -n <id>-rg`.
+
+## After a decommission: delete the file
+
+Optionally confirm deletion on the Azure side first:
+
+    az group show -n <id>-rg   # want: ResourceGroupNotFound
+
+Then **delete the control plane's file**:
+
+    git rm controlplanes/<name>.yaml
+
+A file left at `Deprovision` is **not inert**. The policy keeps `Create`, so the
+next dispatch re-creates the entire control plane, waits for `Ready`, and destroys
+it again - ~30 min of real Azure spend, reported as success.
+
+`Create` cannot be dropped to prevent this. Crossplane defines no Delete-capable
+managementPolicies combination that omits `Create` - a delete-without-create policy
+is not a supported [combination](https://docs.crossplane.io/latest/managed-resources/managed-resources/#managementpolicies).
+It is also the adopt path: the bootstrap KIND holds no managed-resource state, and
+the composed Azure MRs carry no `crossplane.io/external-name` (neither
+configuration-azure-network nor -aks sets one). Removing the file is the only safeguard.
