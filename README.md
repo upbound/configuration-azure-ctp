@@ -42,11 +42,40 @@ For local development against a KIND-based dev control plane:
 up project run --local        # spins up a KIND cluster and installs the package
 ```
 
+### The ControlPlane is namespaced
+
+The `ControlPlane` XR is namespaced (`apis/ctp/definition.yaml` `scope:
+Namespaced`), and everything it touches co-locates in that same namespace:
+the credentials Secret, the Azure `ProviderConfig`, all composed managed
+resources, and the AKS kubeconfig connection secret (written by the AKS
+sub-XR into the XR's namespace).
+
+Choose an RBAC-restricted namespace to keep cluster-admin kubeconfigs and
+cloud credentials out of `default`. This repo's examples use `platform` -
+create it first:
+
+```bash
+kubectl apply -f examples/install/namespace.yaml
+```
+
+A `ControlPlane` applied with no `metadata.namespace` falls back to
+`default`.
+
+In-cluster add-on namespaces (`crossplane-system`, `cert-manager`, `k8gb`,
+`argocd`, etc.) are unaffected - those are fixed namespaces inside the
+downstream AKS cluster, not the XR's namespace on the management cluster.
+
+**Breaking change:** `scope` is an immutable XRD field. Any already-deployed
+cluster-scoped `ControlPlane` (from before this change) cannot be migrated
+in place - delete and recreate it in the chosen namespace.
+
 ### Upper (management) cluster: configure the Azure provider
 
 The management cluster running this package needs an Azure `ProviderConfig`
-(namespaced, in the `default` namespace) so the providers can authenticate.
-See `examples/install/` for three flavors:
+(namespaced) so the providers can authenticate. It must live in the **same
+namespace as the `ControlPlane` XR** (`platform` in this repo's examples) -
+a namespaced `ProviderConfig` only resolves resources from its own
+namespace. See `examples/install/` for three flavors:
 
 * `azure-providerconfig-secret.yaml` — service principal in a Secret (use this on
   local KIND / any cluster without a trusted OIDC issuer).
@@ -321,8 +350,8 @@ not enumerated. Verify availability in your target region with
   on the shared `dare-oidc-provider` app — see the test file header.
 
 The E2E test requires:
-- A working Azure `ProviderConfig` named `default` in the `default` namespace
-  (see `examples/install/` for the three flavors).
+- A working Azure `ProviderConfig` named `default`, namespaced into
+  `platform` (see `examples/install/` for the three flavors).
 - An Azure principal with `User Access Administrator` (or `Owner`) when
   `backup.enabled: yes` (see "Required Azure permissions" above).
 - A `uxp-license` Secret in `crossplane-system` containing a license whose

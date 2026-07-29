@@ -31,7 +31,7 @@ def add_knative_resources(rsp, id_val, knative_op_ready,
         "kind": "Release",
         "metadata": {
             "name": f"{id_val}-knative-operator",
-            "namespace": "default",
+            "namespace": config["namespace"],
             "annotations": operator_annotations
         },
         "spec": {
@@ -59,6 +59,8 @@ def add_knative_resources(rsp, id_val, knative_op_ready,
                     # renovate: datasource=helm depName=knative-operator registryUrl=https://knative.github.io/operator
                     "version": "v1.21.1"
                 },
+                # Chart install target namespace on the workload cluster
+                # (unrelated to the XR's own namespace) - fixed at "default".
                 "namespace": "default",
                 "skipCreateNamespace": False,
                 "wait": True
@@ -81,7 +83,7 @@ def add_knative_resources(rsp, id_val, knative_op_ready,
             "kind": "Object",
             "metadata": {
                 "name": f"{id_val}-knative-serving-ns",
-                "namespace": "default",
+                "namespace": config["namespace"],
                 "annotations": {
                     "crossplane.io/composition-resource-name": "knative-serving-ns"
                 }
@@ -110,7 +112,7 @@ def add_knative_resources(rsp, id_val, knative_op_ready,
             "kind": "Object",
             "metadata": {
                 "name": f"{id_val}-knative-serving-cr",
-                "namespace": "default",
+                "namespace": config["namespace"],
                 "annotations": {
                     "crossplane.io/composition-resource-name": "knative-serving-cr"
                 }

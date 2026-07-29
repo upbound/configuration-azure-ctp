@@ -19,6 +19,11 @@ each load this folder and keep only their subset. The credential comes from
 
 ## Rules
 
+- Every `ControlPlane` file here must set `metadata.namespace: default`, matching
+  the pipeline's ProviderConfig namespace - a namespaced ProviderConfig resolves
+  credentials from its own namespace. The pipeline runs on an ephemeral bootstrap
+  cluster where `default` always exists, so it never depends on a pre-created
+  namespace (these static files can't create one).
 - `parameters.id` is the Azure naming key - short, lowercase, alphanumeric,
   stable (drives `{id}-rg`, `{id}-vnet`, `{id}-sn`, `{id}-aks`, and the
   decommission poll keys on it). Changing it provisions a new control plane

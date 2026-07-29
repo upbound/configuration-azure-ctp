@@ -5,6 +5,7 @@ apiVersion: azure.platform.upbound.io/v1alpha1
 kind: ControlPlane
 metadata:
   name: zoned-control-plane
+  namespace: platform
 spec:
   parameters:
     id: zoned-control-plane

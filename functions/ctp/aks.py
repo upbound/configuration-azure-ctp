@@ -39,7 +39,7 @@ def add_aks_resources(rsp, id_val, location, provider_config, version, nodes,
         "kind": "AKS",
         "metadata": {
             "name": id_val,
-            "namespace": "default",
+            "namespace": config["namespace"],
             "annotations": {
                 "crossplane.io/composition-resource-name": "aks"
             }

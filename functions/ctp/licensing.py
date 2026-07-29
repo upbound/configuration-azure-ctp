@@ -22,7 +22,7 @@ def add_license_resources(rsp, id_val, license_param, config):
         "kind": "Object",
         "metadata": {
             "name": f"{id_val}-uxp-license-secret",
-            "namespace": "default",
+            "namespace": config["namespace"],
             "annotations": {
                 "crossplane.io/composition-resource-name": "uxp-license-secret"
             }
@@ -66,7 +66,7 @@ def add_license_resources(rsp, id_val, license_param, config):
         "kind": "Object",
         "metadata": {
             "name": f"{id_val}-uxp-license",
-            "namespace": "default",
+            "namespace": config["namespace"],
             "annotations": {
                 "crossplane.io/composition-resource-name": "uxp-license"
             }

@@ -27,7 +27,7 @@ def _emit_aks_usage(rsp, id_val, cr_name, by_api_version, by_kind, by_name,
         "kind": "Usage",
         "metadata": {
             "name": f"{id_val}-{cr_name}",
-            "namespace": "default",
+            "namespace": config["namespace"],
             "annotations": {
                 "crossplane.io/composition-resource-name": cr_name
             }
@@ -38,7 +38,7 @@ def _emit_aks_usage(rsp, id_val, cr_name, by_api_version, by_kind, by_name,
                 "kind": "AKS",
                 "resourceRef": {
                     "name": id_val,
-                    "namespace": "default"
+                    "namespace": config["namespace"]
                 }
             },
             "by": {
@@ -63,7 +63,7 @@ def add_usage_resources(rsp, id_val, config, k8gb_enabled=False,
         "kind": "Usage",
         "metadata": {
             "name": f"{id_val}-usage-release-aks",
-            "namespace": "default",
+            "namespace": config["namespace"],
             "annotations": {
                 "crossplane.io/composition-resource-name": "usage-release-aks"
             }
@@ -74,7 +74,7 @@ def add_usage_resources(rsp, id_val, config, k8gb_enabled=False,
                 "kind": "AKS",
                 "resourceRef": {
                     "name": id_val,
-                    "namespace": "default"
+                    "namespace": config["namespace"]
                 }
             },
             "by": {
@@ -94,7 +94,7 @@ def add_usage_resources(rsp, id_val, config, k8gb_enabled=False,
         "kind": "Usage",
         "metadata": {
             "name": f"{id_val}-usage-aks-network",
-            "namespace": "default",
+            "namespace": config["namespace"],
             "annotations": {
                 "crossplane.io/composition-resource-name": "usage-aks-network"
             }
@@ -105,7 +105,7 @@ def add_usage_resources(rsp, id_val, config, k8gb_enabled=False,
                 "kind": "Network",
                 "resourceRef": {
                     "name": id_val,
-                    "namespace": "default"
+                    "namespace": config["namespace"]
                 }
             },
             "by": {

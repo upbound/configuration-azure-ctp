@@ -2,6 +2,7 @@ apiVersion: azure.platform.upbound.io/v1alpha1
 kind: ControlPlane
 metadata:
   name: my-control-plane
+  namespace: platform
 spec:
   parameters:
     id: my-control-plane

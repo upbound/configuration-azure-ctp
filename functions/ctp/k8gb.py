@@ -68,7 +68,7 @@ def add_k8gb_resources(rsp, id_val, k8gb_param, geo_tag, ext_geo_tags,
         "kind": "Release",
         "metadata": {
             "name": f"{id_val}-k8gb",
-            "namespace": "default",
+            "namespace": config["namespace"],
             "annotations": release_annotations
         },
         "spec": {
@@ -100,7 +100,7 @@ def add_k8gb_resources(rsp, id_val, k8gb_param, geo_tag, ext_geo_tags,
         "kind": "Object",
         "metadata": {
             "name": f"{id_val}-k8gb-coredns",
-            "namespace": "default",
+            "namespace": config["namespace"],
             "annotations": {
                 "crossplane.io/composition-resource-name": "k8gb-coredns-observe"
             }
