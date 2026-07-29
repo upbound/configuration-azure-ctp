@@ -308,9 +308,10 @@ not enumerated. Verify availability in your target region with
 
 ## Testing
 
-* Composition tests: `up test run tests/test-controlplane` — 21 tests
+* Composition tests: `up test run tests/test-controlplane` — 23 tests
   covering basic dispatch, backup, license, schedule, VPA, Knative,
-  install-from restore, RBAC, namespace targeting, and the k8gb/ArgoCD add-ons.
+  install-from restore, RBAC, namespace targeting, managementMode, and the
+  k8gb/ArgoCD add-ons.
 * E2E (real Azure): `up test run tests/e2etest-controlplane --e2e` — a single
   comprehensive test (`controlplane`) that provisions a real AKS cluster and
   exercises the full stack: UXP + Workload-Identity backup + the k8gb producer +
@@ -328,6 +329,51 @@ The E2E test requires:
   embedded `restrictions.clusterType` does NOT restrict to single-node
   Kind clusters.
 - Sufficient regional vCPU quota (≥ 20 in the chosen VM family).
+
+## Dynamic provisioning
+
+Beyond the throwaway correctness test above, the same `up test run --e2e`
+machinery doubles as a provisioning pipeline for *persistent* control planes.
+Two layers are involved: a disposable local KIND control plane that
+`up test run --e2e --local` creates automatically (the bootstrap that runs this
+package - no Upbound) and the AKS+UXP control plane it provisions (the product
+that stays running). The bootstrap solves Crossplane's chicken-and-egg problem: a throwaway
+control plane whose only job is to birth, then re-adopt, the real one.
+
+Each control plane's lifecycle is driven by its own
+`spec.parameters.managementMode`:
+
+- `Full` (default): the standard Crossplane lifecycle including deletion, and what
+  you get if you omit `managementMode`. The provisioning pipeline does not act on
+  it - a plain control plane behaves like any other managed resource.
+- `Provision`: create + adopt + update, never delete - opt in for a persistent
+  control plane. With the deterministic `id`, a run create-or-adopts every resource
+  by name, reconciles it to the XR, and orphans it all on teardown. State lives in
+  the persistent Azure resources and their naming, not in the bootstrap, so the
+  next run re-adopts by `id` and applies any changes.
+- `ObserveOnly`: adopt and watch without changing anything (safe take-over), also
+  orphaned on teardown.
+- `Deprovision`: the pipeline's explicit decommission signal - adopt and delete
+  (`Create`/`Observe`/`Delete`, no `Update`, so a drifted cluster is torn down
+  rather than reconciled first). `up test`'s teardown returns
+  before the ~15-min Azure cascade finishes, so the pipeline keeps KIND alive
+  (`--skip-control-plane-cleanup`) and polls until it drains; `az group delete -n
+  <id>-rg` is the blunt alternative.
+
+Declare one control plane per file under `controlplanes/<name>.yaml` (just the
+`ControlPlane` XR, with its `managementMode`). Two Python E2E tests load this
+folder and split it by explicit mode: `tests/provision/reconcile` takes the
+`Provision`/`ObserveOnly` control planes (provision/adopt/orphan) and
+`tests/provision/decommission` takes the `Deprovision` ones (adopt then delete). A file
+without an explicit `managementMode` is ignored by both passes, so a stray file
+can't trigger an accidental decommission. Each builds a `source: Secret`
+ProviderConfig plus the `azure-creds` Secret from `UP_CLOUD_CREDENTIALS` (which
+`up test` injects into the test container) - no template, no `tests/_run` staging.
+`.github/workflows/provision.yaml` is a single manual job that classifies the
+files and runs the reconcile and/or decommission pass accordingly. See
+`controlplanes/README.md` to add or run one. Immutable AKS fields
+(`nodes.vmSize`, `nodes.availabilityZones`) reprovision via the backup +
+`installFrom` path, not in place.
 
 ## Validation
 
