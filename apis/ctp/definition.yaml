@@ -265,8 +265,9 @@ spec:
                       this XR is removed and is re-adopted on the next apply -
                       used by the dynamic-provisioning pipeline. ObserveOnly
                       adopts and watches without making changes (safe take-over).
-                      Deprovision behaves like Full but is the explicit signal the
-                      provisioning pipeline's decommission pass acts on.
+                      Deprovision is the pipeline's decommission signal: it adopts
+                      and deletes (Create/Observe/Delete) without Update, so a
+                      drifted control plane is torn down rather than reconciled.
                     type: string
                     enum:
                     - Provision

@@ -353,8 +353,9 @@ Each control plane's lifecycle is driven by its own
   next run re-adopts by `id` and applies any changes.
 - `ObserveOnly`: adopt and watch without changing anything (safe take-over), also
   orphaned on teardown.
-- `Deprovision`: the same full lifecycle as `Full`, but the pipeline's explicit
-  decommission signal - the resources are deleted. `up test`'s teardown returns
+- `Deprovision`: the pipeline's explicit decommission signal - adopt and delete
+  (`Create`/`Observe`/`Delete`, no `Update`, so a drifted cluster is torn down
+  rather than reconciled first). `up test`'s teardown returns
   before the ~15-min Azure cascade finishes, so the pipeline keeps KIND alive
   (`--skip-control-plane-cleanup`) and polls until it drains; `az group delete -n
   <id>-rg` is the blunt alternative.
