@@ -1,8 +1,9 @@
 # Install examples
 
 These manifests configure the Azure provider on the upper (management) cluster
-where the `configuration-azure-ctp` package is installed. Pick one of the three
-credential flavors and apply it once before applying a `ControlPlane` XR.
+where the `configuration-azure-ctp` package is installed. Create the `platform`
+namespace, then pick one of the three credential flavors and apply it once
+before applying a `ControlPlane` XR.
 
 | File                              | Source                  | When to use                                                                 |
 | --------------------------------- | ----------------------- | --------------------------------------------------------------------------- |
@@ -11,10 +12,16 @@ credential flavors and apply it once before applying a `ControlPlane` XR.
 | `azure-providerconfig-oidc.yaml`      | `OIDCTokenFile`     | Self-hosted UXP on a cluster with Workload Identity (AKS/EKS/GKE) already wired. |
 
 All three install a namespaced `ProviderConfig` named `default` in the
-`default` namespace, which matches the default `providerConfigName` on the
+`platform` namespace, which matches the default `providerConfigName` on the
 `ControlPlane` XR and the namespace the composed managed resources are created
 in. Override `spec.parameters.providerConfigName` on the XR to use a different
 name.
+
+## Create the namespace
+
+```bash
+kubectl apply -f namespace.yaml
+```
 
 ## Secret-based setup
 

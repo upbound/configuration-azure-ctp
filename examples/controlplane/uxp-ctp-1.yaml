@@ -2,6 +2,7 @@ apiVersion: azure.platform.upbound.io/v1alpha1
 kind: ControlPlane
 metadata:
   name: uxp-ctp-1
+  namespace: platform
 spec:
   parameters:
     id: uxp-ctp-1

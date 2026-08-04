@@ -51,6 +51,8 @@ if creds and controlplanes:
     if manifests:
         # Secret (base64 SP JSON) + namespaced ProviderConfig, both in default -
         # a namespaced ProviderConfig reads its Secret from its own namespace.
+        # default always exists on the ephemeral bootstrap cluster, so the
+        # pipeline never depends on a pre-created namespace.
         azure_secret = {
             "apiVersion": "v1",
             "kind": "Secret",

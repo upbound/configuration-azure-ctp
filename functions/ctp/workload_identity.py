@@ -37,7 +37,7 @@ def add_workload_identity_resources(rsp, id_val, location, provider_config,
         "kind": "UserAssignedIdentity",
         "metadata": {
             "name": f"{id_val}-backup-identity",
-            "namespace": "default",
+            "namespace": config["namespace"],
             "annotations": {
                 "crossplane.io/composition-resource-name": "backup-identity"
             }
@@ -69,7 +69,7 @@ def add_workload_identity_resources(rsp, id_val, location, provider_config,
         "kind": "FederatedIdentityCredential",
         "metadata": {
             "name": f"{id_val}-backup-federation",
-            "namespace": "default",
+            "namespace": config["namespace"],
             "annotations": {
                 "crossplane.io/composition-resource-name": "backup-federation"
             }
@@ -114,7 +114,7 @@ def add_workload_identity_resources(rsp, id_val, location, provider_config,
             "kind": "RoleAssignment",
             "metadata": {
                 "name": f"{id_val}-backup-role",
-                "namespace": "default",
+                "namespace": config["namespace"],
                 "annotations": {
                     "crossplane.io/composition-resource-name": "backup-role"
                 }
@@ -149,7 +149,7 @@ def add_workload_identity_resources(rsp, id_val, location, provider_config,
         "kind": "Object",
         "metadata": {
             "name": f"{id_val}-backup-sa",
-            "namespace": "default",
+            "namespace": config["namespace"],
             "annotations": {
                 "crossplane.io/composition-resource-name": "backup-sa"
             }
@@ -189,7 +189,7 @@ def add_workload_identity_resources(rsp, id_val, location, provider_config,
         "kind": "Object",
         "metadata": {
             "name": f"{id_val}-controller-restart",
-            "namespace": "default",
+            "namespace": config["namespace"],
             "annotations": {
                 "crossplane.io/composition-resource-name": "controller-restart"
             }
@@ -236,7 +236,7 @@ def add_workload_identity_resources(rsp, id_val, location, provider_config,
                 "kind": "Object",
                 "metadata": {
                     "name": f"{id_val}-backup-restore",
-                    "namespace": "default",
+                    "namespace": config["namespace"],
                     "annotations": {
                         "crossplane.io/composition-resource-name": "backup-restore"
                     }

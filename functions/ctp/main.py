@@ -91,6 +91,11 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     xr = resource.struct_to_dict(req.observed.composite.resource)
     params = xr.get("spec", {}).get("parameters", {})
 
+    # The XR is namespaced (apis/ctp/definition.yaml scope: Namespaced); every
+    # composed resource and the AKS sub-XR's kubeconfig connection secret
+    # co-locate in the XR's own namespace. Falls back to "default" when unset.
+    config["namespace"] = xr.get("metadata", {}).get("namespace") or "default"
+
     id_val = params.get("id", "")
     location = params.get("location", "")
     provider_config = params.get("providerConfigName", "default")

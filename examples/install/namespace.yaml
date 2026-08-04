@@ -1,0 +1,10 @@
+# The namespace that holds a ControlPlane and all of its resources: the
+# credentials Secret, the Azure ProviderConfig, the composed managed resources,
+# and the kubeconfig connection secret the AKS sub-XR writes.
+# Crossplane does not create this namespace - apply it before the ControlPlane.
+# Use an RBAC-restricted namespace to keep cluster-admin kubeconfigs and cloud
+# credentials out of "default".
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: platform

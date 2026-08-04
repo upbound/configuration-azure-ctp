@@ -26,7 +26,7 @@ def add_runtime_config(rsp, id_val, vpa, knative, vpa_ready, knative_ready, conf
         "kind": "Object",
         "metadata": {
             "name": f"{id_val}-upbound-runtime-config",
-            "namespace": "default",
+            "namespace": config["namespace"],
             "annotations": {
                 "crossplane.io/composition-resource-name": "upbound-runtime-config"
             }

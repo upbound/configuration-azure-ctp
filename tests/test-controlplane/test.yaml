@@ -1492,3 +1492,442 @@ spec:
     spec:
       managementPolicies:
       - Observe
+---
+apiVersion: meta.dev.upbound.io/v1alpha1
+kind: CompositionTest
+metadata:
+  name: namespaced-core
+spec:
+  compositionPath: apis/ctp/composition.yaml
+  xrdPath: apis/ctp/definition.yaml
+  validate: true
+  timeoutSeconds: 60
+  xr:
+    apiVersion: azure.platform.upbound.io/v1alpha1
+    kind: ControlPlane
+    metadata:
+      name: test-cp
+      namespace: platform
+    spec:
+      parameters:
+        id: test-cp
+        location: eastus
+        version: "1.34"
+        nodes:
+          count: 2
+          vmSize: Standard_D2s_v3
+  assertResources:
+  - apiVersion: azure.platform.upbound.io/v1alpha1
+    kind: Network
+    metadata:
+      name: test-cp
+      namespace: platform
+  - apiVersion: azure.platform.upbound.io/v1alpha1
+    kind: AKS
+    metadata:
+      name: test-cp
+      namespace: platform
+  - apiVersion: helm.m.crossplane.io/v1beta1
+    kind: Release
+    metadata:
+      name: test-cp-uxp
+      namespace: platform
+  - apiVersion: protection.crossplane.io/v1beta1
+    kind: Usage
+    metadata:
+      name: test-cp-usage-aks-network
+      namespace: platform
+    spec:
+      of:
+        kind: Network
+        resourceRef:
+          name: test-cp
+          namespace: platform
+---
+apiVersion: meta.dev.upbound.io/v1alpha1
+kind: CompositionTest
+metadata:
+  name: default-namespace-fallback
+spec:
+  compositionPath: apis/ctp/composition.yaml
+  xrdPath: apis/ctp/definition.yaml
+  validate: true
+  timeoutSeconds: 60
+  xr:
+    apiVersion: azure.platform.upbound.io/v1alpha1
+    kind: ControlPlane
+    metadata:
+      name: test-cp
+      namespace: default
+    spec:
+      parameters:
+        id: test-cp
+        location: eastus
+        version: "1.34"
+        nodes:
+          count: 2
+          vmSize: Standard_D2s_v3
+  assertResources:
+  - apiVersion: azure.platform.upbound.io/v1alpha1
+    kind: AKS
+    metadata:
+      name: test-cp
+      namespace: default
+---
+apiVersion: meta.dev.upbound.io/v1alpha1
+kind: CompositionTest
+metadata:
+  name: namespaced-backup
+spec:
+  compositionPath: apis/ctp/composition.yaml
+  xrdPath: apis/ctp/definition.yaml
+  validate: true
+  timeoutSeconds: 60
+  xr:
+    apiVersion: azure.platform.upbound.io/v1alpha1
+    kind: ControlPlane
+    metadata:
+      name: test-cp
+      namespace: platform
+    spec:
+      parameters:
+        id: test-cp
+        location: eastus
+        version: "1.34"
+        nodes:
+          count: 2
+          vmSize: Standard_D2s_v3
+        backup:
+          enabled: "yes"
+          location: mybackup001/uxp-backups
+  observedResources:
+  # The OIDC issuer now comes from the composed AKS XR's status.aks.oidcUrl.
+  - apiVersion: azure.platform.upbound.io/v1alpha1
+    kind: AKS
+    metadata:
+      name: test-cp
+      namespace: platform
+      annotations:
+        crossplane.io/composition-resource-name: aks
+    status:
+      aks:
+        oidcUrl: https://eastus.oic.prod-aks.azure.com/00000000-0000-0000-0000-000000000000/abcdef/
+        clusterName: test-cp-aks
+        nodes:
+          vmSize: Standard_D2s_v3
+  - apiVersion: helm.m.crossplane.io/v1beta1
+    kind: Release
+    metadata:
+      name: test-cp-uxp
+      namespace: platform
+      annotations:
+        crossplane.io/composition-resource-name: uxp-release
+    spec:
+      forProvider:
+        chart:
+          name: crossplane
+          repository: oci://xpkg.upbound.io/upbound
+          version: 2.2.1-up.1
+    status:
+      atProvider:
+        state: deployed
+  assertResources:
+  # StorageAccount / Container / BackupConfig - always rendered once backup is enabled.
+  - apiVersion: storage.azure.m.upbound.io/v1beta1
+    kind: Account
+    metadata:
+      name: mybackup001
+      namespace: platform
+    spec:
+      forProvider:
+        location: eastus
+      providerConfigRef:
+        name: default
+        kind: ProviderConfig
+  - apiVersion: storage.azure.m.upbound.io/v1beta1
+    kind: Container
+    metadata:
+      name: test-cp-backup-container
+      namespace: platform
+  - apiVersion: kubernetes.m.crossplane.io/v1alpha1
+    kind: Object
+    metadata:
+      name: test-cp-backup-config
+      namespace: platform
+    spec:
+      forProvider:
+        manifest:
+          spec:
+            objectStorage:
+              provider: Azure
+              credentials:
+                source: InjectedIdentity
+  # Workload-identity resources - require the OIDC issuer + UXP deployed.
+  - apiVersion: managedidentity.azure.m.upbound.io/v1beta1
+    kind: UserAssignedIdentity
+    metadata:
+      name: test-cp-backup-identity
+      namespace: platform
+    spec:
+      providerConfigRef:
+        name: default
+        kind: ProviderConfig
+  - apiVersion: managedidentity.azure.m.upbound.io/v1beta1
+    kind: FederatedIdentityCredential
+    metadata:
+      name: test-cp-backup-federation
+      namespace: platform
+    spec:
+      forProvider:
+        issuer: https://eastus.oic.prod-aks.azure.com/00000000-0000-0000-0000-000000000000/abcdef/
+        subject: system:serviceaccount:crossplane-system:upbound-controller-manager
+  - apiVersion: kubernetes.m.crossplane.io/v1alpha1
+    kind: Object
+    metadata:
+      name: test-cp-backup-sa
+      namespace: platform
+    spec:
+      forProvider:
+        manifest:
+          kind: ServiceAccount
+          metadata:
+            name: upbound-controller-manager
+            namespace: crossplane-system
+  - apiVersion: kubernetes.m.crossplane.io/v1alpha1
+    kind: Object
+    metadata:
+      name: test-cp-controller-restart
+      namespace: platform
+    spec:
+      forProvider:
+        manifest:
+          kind: Deployment
+          metadata:
+            name: upbound-controller-manager
+            namespace: crossplane-system
+---
+apiVersion: meta.dev.upbound.io/v1alpha1
+kind: CompositionTest
+metadata:
+  name: namespaced-k8gb
+spec:
+  compositionPath: apis/ctp/composition.yaml
+  xrdPath: apis/ctp/definition.yaml
+  validate: true
+  timeoutSeconds: 60
+  xr:
+    apiVersion: azure.platform.upbound.io/v1alpha1
+    kind: ControlPlane
+    metadata:
+      name: test-cp
+      namespace: platform
+    spec:
+      parameters:
+        id: test-cp
+        location: eastus
+        version: "1.34"
+        nodes:
+          count: 2
+          vmSize: Standard_D2s_v3
+        k8gb:
+          enabled: "yes"
+          dnsZone: gslb.example.com
+          parentZone: example.com
+  assertResources:
+  - apiVersion: helm.m.crossplane.io/v1beta1
+    kind: Release
+    metadata:
+      name: test-cp-k8gb
+      namespace: platform
+      annotations:
+        crossplane.io/external-name: k8gb
+    spec:
+      forProvider:
+        chart:
+          name: k8gb
+          repository: https://www.k8gb.io
+          version: v0.20.0
+        # Helm install target on the child cluster - fixed, not the XR namespace.
+        namespace: k8gb
+        values:
+          k8gb:
+            clusterGeoTag: azure-eastus-test-cp
+            installLegacyCrds: true
+            dnsZones:
+            - loadBalancedZone: gslb.example.com
+              parentZone: example.com
+          extdns:
+            enabled: false
+          coredns:
+            serviceType: LoadBalancer
+  - apiVersion: kubernetes.m.crossplane.io/v1alpha1
+    kind: Object
+    metadata:
+      name: test-cp-k8gb-coredns
+      namespace: platform
+    spec:
+      managementPolicies:
+      - Observe
+      forProvider:
+        manifest:
+          kind: Service
+          metadata:
+            name: k8gb-coredns
+            # In-cluster target namespace - fixed.
+            namespace: k8gb
+  - apiVersion: helm.m.crossplane.io/v1beta1
+    kind: Release
+    metadata:
+      name: test-cp-envoy-gateway
+      namespace: platform
+  - apiVersion: protection.crossplane.io/v1beta1
+    kind: Usage
+    metadata:
+      name: test-cp-usage-k8gb-aks
+      namespace: platform
+    spec:
+      of:
+        kind: AKS
+        resourceRef:
+          name: test-cp
+          namespace: platform
+  - apiVersion: protection.crossplane.io/v1beta1
+    kind: Usage
+    metadata:
+      name: test-cp-usage-k8gb-coredns-aks
+      namespace: platform
+    spec:
+      of:
+        kind: AKS
+        resourceRef:
+          name: test-cp
+          namespace: platform
+---
+apiVersion: meta.dev.upbound.io/v1alpha1
+kind: CompositionTest
+metadata:
+  name: namespaced-argocd
+spec:
+  compositionPath: apis/ctp/composition.yaml
+  xrdPath: apis/ctp/definition.yaml
+  validate: true
+  timeoutSeconds: 60
+  xr:
+    apiVersion: azure.platform.upbound.io/v1alpha1
+    kind: ControlPlane
+    metadata:
+      name: test-cp
+      namespace: platform
+    spec:
+      parameters:
+        id: test-cp
+        location: eastus
+        version: "1.34"
+        nodes:
+          count: 2
+          vmSize: Standard_D2s_v3
+        argocd:
+          enabled: "yes"
+          hostname: argocd.example.com
+          url: https://github.com/example/apps
+  assertResources:
+  - apiVersion: helm.m.crossplane.io/v1beta1
+    kind: Release
+    metadata:
+      name: test-cp-argocd
+      namespace: platform
+      annotations:
+        crossplane.io/external-name: argocd
+    spec:
+      forProvider:
+        chart:
+          name: argo-cd
+          repository: https://argoproj.github.io/argo-helm
+        # Helm install target on the child cluster - fixed, not the XR namespace.
+        namespace: argocd
+        values:
+          configs:
+            params:
+              server.insecure: true
+  - apiVersion: helm.m.crossplane.io/v1beta1
+    kind: Release
+    metadata:
+      name: test-cp-envoy-gateway
+      namespace: platform
+  - apiVersion: protection.crossplane.io/v1beta1
+    kind: Usage
+    metadata:
+      name: test-cp-usage-argocd-aks
+      namespace: platform
+    spec:
+      of:
+        kind: AKS
+        resourceRef:
+          name: test-cp
+          namespace: platform
+  - apiVersion: protection.crossplane.io/v1beta1
+    kind: Usage
+    metadata:
+      name: test-cp-usage-argocd-gateway-aks
+      namespace: platform
+    spec:
+      of:
+        kind: AKS
+        resourceRef:
+          name: test-cp
+          namespace: platform
+  - apiVersion: protection.crossplane.io/v1beta1
+    kind: Usage
+    metadata:
+      name: test-cp-usage-argocd-httproute-aks
+      namespace: platform
+    spec:
+      of:
+        kind: AKS
+        resourceRef:
+          name: test-cp
+          namespace: platform
+---
+apiVersion: meta.dev.upbound.io/v1alpha1
+kind: CompositionTest
+metadata:
+  name: namespaced-vpa
+spec:
+  compositionPath: apis/ctp/composition.yaml
+  xrdPath: apis/ctp/definition.yaml
+  validate: true
+  timeoutSeconds: 60
+  xr:
+    apiVersion: azure.platform.upbound.io/v1alpha1
+    kind: ControlPlane
+    metadata:
+      name: test-cp
+      namespace: platform
+    spec:
+      parameters:
+        id: test-cp
+        location: eastus
+        version: "1.34"
+        nodes:
+          count: 2
+          vmSize: Standard_D2s_v3
+        providerVerticalPodAutoscaling:
+          enabled: "yes"
+          minCpu: "500m"
+          maxCpu: "2"
+          minMemory: "100Mi"
+          maxMemory: "4000Mi"
+  assertResources:
+  - apiVersion: helm.m.crossplane.io/v1beta1
+    kind: Release
+    metadata:
+      name: test-cp-vpa
+      namespace: platform
+    spec:
+      forProvider:
+        chart:
+          name: vpa
+          repository: https://charts.fairwinds.com/stable
+          version: 4.10.1
+        # Helm install target on the child cluster - fixed, not the XR namespace.
+        namespace: kube-system

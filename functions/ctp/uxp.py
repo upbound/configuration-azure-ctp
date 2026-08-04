@@ -36,7 +36,7 @@ def add_uxp_release(rsp, id_val, uxp_version, uxp_deployed, mgr_args, config):
         "kind": "Release",
         "metadata": {
             "name": f"{id_val}-uxp",
-            "namespace": "default",
+            "namespace": config["namespace"],
             "annotations": annotations
         },
         "spec": {

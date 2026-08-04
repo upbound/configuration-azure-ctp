@@ -9,7 +9,7 @@ spec:
     - crossplane
     kind: ControlPlane
     plural: controlplanes
-  scope: Cluster
+  scope: Namespaced
   versions:
   - name: v1alpha1
     referenceable: true

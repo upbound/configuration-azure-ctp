@@ -47,11 +47,15 @@ spec:
   timeoutSeconds: 5400
   cleanupTimeoutSeconds: 1800
   extraResources:
+  - apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: platform
   - apiVersion: azure.m.upbound.io/v1beta1
     kind: ProviderConfig
     metadata:
       name: default
-      namespace: default
+      namespace: platform
     spec:
       credentials:
         source: Upbound
@@ -63,6 +67,7 @@ spec:
     kind: ControlPlane
     metadata:
       name: e2e-test-cp
+      namespace: platform
     spec:
       parameters:
         id: e2etestcp

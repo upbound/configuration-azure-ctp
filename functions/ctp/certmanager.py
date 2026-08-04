@@ -27,7 +27,7 @@ def add_certmanager_resources(rsp, id_val, certmanager_ready, config):
         "kind": "Release",
         "metadata": {
             "name": f"{id_val}-certmanager",
-            "namespace": "default",
+            "namespace": config["namespace"],
             "annotations": annotations
         },
         "spec": {
