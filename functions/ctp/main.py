@@ -47,8 +47,11 @@ from .prelude import (
     check_license_conflict,
     derive_k8gb_ext_geo_tags,
     derive_k8gb_geo_tag,
+    extract_k8gb_public_ip,
+    extract_k8gb_public_ip_id,
     extract_oidc_info,
     get_cluster_name,
+    get_cluster_principal_id,
     get_nodepool_actual_vm_size,
     get_storage_account_id,
     get_workload_identity_client_id,
@@ -138,6 +141,14 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         for name, res in req.observed.resources.items()
     }
 
+    k8gb_public_ip = ""
+    k8gb_public_ip_id = ""
+    k8gb_cluster_principal_id = ""
+    if k8gb_enabled:
+        k8gb_public_ip = extract_k8gb_public_ip(observed_resources)
+        k8gb_public_ip_id = extract_k8gb_public_ip_id(observed_resources)
+        k8gb_cluster_principal_id = get_cluster_principal_id(observed_resources)
+
     oidc_issuer_url, _oidc_host = extract_oidc_info(backup, observed_resources)
 
     client_id = get_workload_identity_client_id(observed_resources)
@@ -193,7 +204,9 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     # observe Object that feeds status.controlplane.k8gb.
     if k8gb_enabled:
         add_k8gb_resources(rsp, id_val, k8gb, k8gb_geo_tag, k8gb_ext_geo_tags,
-                           k8gb_deployed, config)
+                           k8gb_deployed, location, provider_config,
+                           k8gb_public_ip, k8gb_public_ip_id,
+                           k8gb_cluster_principal_id, config)
 
     if argocd_enabled:
         add_argocd_resources(rsp, id_val, argocd, argocd_deployed,
@@ -245,4 +258,4 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     update_status(rsp, id_val, params, uxp_version, uxp_deployed, backup,
                  client_id, backup.get("location", ""), observed_resources,
                  nodes, ng_actual_vm_size, ng_size_mismatch, cluster_name, vpa,
-                 knative, k8gb, k8gb_geo_tag, license_conflict, config)
+                 knative, k8gb, k8gb_geo_tag, k8gb_public_ip, license_conflict, config)

@@ -155,6 +155,38 @@ def add_usage_resources(rsp, id_val, config, k8gb_enabled=False,
             f"{id_val}-k8gb-coredns",
             "k8gb CoreDNS observe Object must be removed before the AKS cluster is deleted",
             config)
+        # Release the reserved Public IP only after the k8gb Release (and its
+        # LB, which references the IP) is gone.
+        usage_ip = {
+            "apiVersion": "protection.crossplane.io/v1beta1",
+            "kind": "Usage",
+            "metadata": {
+                "name": f"{id_val}-usage-k8gb-ip-release",
+                "namespace": config["namespace"],
+                "annotations": {
+                    "crossplane.io/composition-resource-name": "usage-k8gb-ip-release"
+                }
+            },
+            "spec": {
+                "of": {
+                    "apiVersion": "network.azure.m.upbound.io/v1beta1",
+                    "kind": "PublicIP",
+                    "resourceRef": {
+                        "name": f"{id_val}-k8gb-ip",
+                        "namespace": config["namespace"]
+                    }
+                },
+                "by": {
+                    "apiVersion": "helm.m.crossplane.io/v1beta1",
+                    "kind": "Release",
+                    "resourceRef": {"name": f"{id_val}-k8gb"}
+                },
+                "reason": "CoreDNS reserved Public IP must be released only after the k8gb Release (and its LB) is gone",
+                "replayDeletion": True
+            }
+        }
+        stamp(usage_ip, config)
+        resource.update(rsp.desired.resources["usage-k8gb-ip-release"], usage_ip)
 
     if argocd_enabled:
         _emit_aks_usage(
