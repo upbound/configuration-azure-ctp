@@ -29,8 +29,10 @@ Extend the `ControlPlane` composition so a child AKS cluster gets:
 - **k8gb** (operator + CoreDNS via a native Azure Standard LB) installed when
   `k8gb.enabled`,
 - **ArgoCD** (+ UI Gateway/HTTPRoute + a root app-of-apps `Application`) when `argocd.enabled`,
-- the **status contract** `status.controlplane.k8gb.coreDNSEndpoint` +
-  `delegationRecord` surfaced for the FleetGslb aggregator to consume.
+- the **status contract** `status.controlplane.k8gb.coreDNSEndpoint`, `nsName`,
+  `glueAddresses`, and `delegationRecord` surfaced for the FleetGslb aggregator to
+  consume. `delegationRecord` is a multi-line NS + A record; `coreDNSEndpoint` is
+  informational only.
 
 ## Repo orientation (for fresh context)
 
@@ -87,7 +89,7 @@ Extend the `ControlPlane` composition so a child AKS cluster gets:
   `MixedProtocolLBService` gate (GA in 1.26, on by default in supported AKS) - one
   Service with both ports is expected to work; verify on the target AKS version.
 - k8gb: gated by `k8gb.enabled`; **CoreDNS exposed via a native Azure Standard LB
-  serving UDP:53 (and TCP:53)**, **`extdns.enabled: false`** (no external-dns).
+  serving UDP:53 (UDP-only)**, **`extdns.enabled: false`** (no external-dns).
   **Pin the k8gb chart to a version whose `Gslb` CRD matches resilient-ctp's
   consumer (`k8gb.absa.oss/v1beta1`; resilient-ctp installs v0.15.0) - do NOT track
   latest**, or the producer/consumer CRD contract drifts. Reuse resilient-ctp's
@@ -142,7 +144,9 @@ historical context.
     `parentZone`, `clusterGeoTag` (optional; unique-per-CP default derived
     in-function - see below), `strategy` (`failover`/`roundRobin`/`geoip`,
     default `failover`).
-  - `status.controlplane.k8gb`: `enabled`, `coreDNSEndpoint`, `delegationRecord`.
+  - `status.controlplane.k8gb`: `enabled`, `coreDNSEndpoint`, `nsName`,
+    `glueAddresses`, `delegationRecord`. `delegationRecord` is a multi-line NS + A
+    record; `coreDNSEndpoint` is informational only.
 - **`functions/ctp/k8gb.py`** `add_k8gb_resources(...)`:
   - k8gb `Release` (chart `k8gb`, repo `https://www.k8gb.io`, **version pinned to
     match resilient-ctp's `Gslb` v1beta1 consumer - not latest**): values reuse
@@ -150,7 +154,7 @@ historical context.
     `k8gb.extGslbClustersGeoTags`, `k8gb.edgeDNSServers`,
     `k8gb.deployCrds/deployRbac`; plus **`extdns.enabled: false`**. Stale-Ready
     workaround.
-  - **Expose CoreDNS via a native Azure Standard LB serving UDP:53 (and TCP:53).**
+  - **Expose CoreDNS via a native Azure Standard LB serving UDP:53 (UDP-only).**
     No LB-controller add-on is needed (AKS handles it). **Verify the exact
     k8gb/coredns chart keys** for LB exposure (e.g. `k8gb.coreDNSExposed` and the
     coredns subchart's `serviceType` / `serviceAnnotations`) - do not assume. For a
@@ -159,6 +163,8 @@ historical context.
     `provider_config`) referenced by
     `service.beta.kubernetes.io/azure-load-balancer-ipv4` (+
     `azure-load-balancer-resource-group` if the IP is in another RG).
+  - UDP-only CoreDNS via `coredns.servers[].zones[].use_tcp=false` - verify keys
+    against k8gb chart v0.20.0 with `helm template` before the e2e gate.
   - `clusterGeoTag` default must be **unique per control plane** - `azure-<location>`
     collides if two CPs share a location; incorporate the CP `id`
     (e.g. `azure-<location>-<id-suffix>`) or require the param.
@@ -175,12 +181,14 @@ historical context.
   **both** the k8gb `Release` **and** the CoreDNS observe `Object`, emitted only
   when k8gb is enabled.
 - **`functions/ctp/status.py`**: populate `status.controlplane.k8gb` - `enabled`,
-  `coreDNSEndpoint` (from the observed CoreDNS Service Object), `delegationRecord`
-  (computed NS+glue string). **This is the contract the FleetGslb aggregator reads
-  - keep field names stable, and make the NS names match k8gb's
+  `coreDNSEndpoint` (from the observed CoreDNS Service Object, informational only),
+  `nsName` (the k8gb NS name for this cluster), `glueAddresses` (pinned static
+  IP(s) backing the NS glue), `delegationRecord` (a multi-line NS + A record - one
+  NS line plus one A line per glue address). **This is the contract the FleetGslb
+  aggregator reads - keep field names stable, and make the NS names match k8gb's
   `ClusterNSName`/`ExtClusterNSNames` convention** (not an ad-hoc format), or
-  FleetGslb's later writes will not line up. `coreDNSEndpoint` must ultimately be an
-  IP for glue (see the static-IP note in Assumptions).
+  FleetGslb's later writes will not line up. `glueAddresses` must ultimately hold
+  the pinned static IP for glue (see the static-IP note in Assumptions).
 - **`main.py`**: `if k8gb and k8gb.get("enabled") == "yes": add_k8gb_resources(...)`.
 - Tests: k8gb `Release` + CoreDNS observe `Object` + both `Usage`s render when
   enabled, absent when disabled.
@@ -240,8 +248,9 @@ historical context.
   `helm.m.crossplane.io` + `kubernetes.m.crossplane.io` (already used by knative);
   the (deferred) static Public IP reuses the existing Azure provider MRs. Confirm
   they resolve.
-- Keep the FleetGslb status contract (`coreDNSEndpoint`, `delegationRecord`) stable
-  once defined in Step 3.
+- Keep the FleetGslb status contract (`coreDNSEndpoint`, `nsName`, `glueAddresses`,
+  `delegationRecord`) stable once defined in Step 3. `delegationRecord` is a
+  multi-line NS + A record; `coreDNSEndpoint` is informational only.
 
 ## Assumptions / deferred
 

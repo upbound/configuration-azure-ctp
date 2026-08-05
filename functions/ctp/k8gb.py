@@ -3,7 +3,7 @@
 Installs the k8gb operator and its CoreDNS on the child cluster, exposing
 CoreDNS via an Azure Standard LoadBalancer serving :53, and observes that
 Service so the XR can surface the k8gb status contract (coreDNSEndpoint +
-delegationRecord) for the FleetGslb aggregator to consume.
+nsName + glueAddresses + delegationRecord) for the FleetGslb aggregator to consume.
 
 - Chart pinned to v0.20.0. `installLegacyCrds: true` (set explicitly below) keeps
   the `k8gb.absa.oss/v1beta1` `Gslb` CRD group installed alongside the new
@@ -50,8 +50,22 @@ def add_k8gb_resources(rsp, id_val, k8gb_param, geo_tag, ext_geo_tags,
         "extdns": {"enabled": False},
         # AKS provisions an Azure Standard LB with native UDP support; a plain
         # LoadBalancer Service is enough (no cloud LB-controller annotations).
+        # UDP-only CoreDNS on :53. The coredns subchart renders a UDP-only
+        # Service when every server zone sets use_tcp: false; Azure Standard LB
+        # (like GKE L4) does not accept a mixed TCP+UDP Service on one port on
+        # older clusters, and DNS glue lookups are UDP.
         "coredns": {
-            "serviceType": "LoadBalancer"
+            "serviceType": "LoadBalancer",
+            "servers": [
+                {
+                    "zones": [{"zone": ".", "use_tcp": False}],
+                    "port": 5353,
+                    "servicePort": 53,
+                    "plugins": [
+                        {"name": "prometheus", "parameters": "0.0.0.0:9153"}
+                    ]
+                }
+            ]
         }
     }
 

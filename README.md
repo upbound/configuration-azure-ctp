@@ -297,8 +297,14 @@ balancer until a `Gateway` exists, so plain control planes pay nothing.
 When `k8gb.enabled: "yes"`, the control plane becomes a **producer** in the fleet
 GSLB architecture (see `docs/ctp-addons-implementation-plan.md`): it installs the
 k8gb operator and CoreDNS exposed through an Azure Standard Load Balancer serving
-`:53`, and surfaces `status.controlplane.k8gb.coreDNSEndpoint` + `delegationRecord`
-for the parent-side FleetGslb aggregator to consume. Parameters: `dnsZone`
+`:53`, and surfaces `status.controlplane.k8gb.coreDNSEndpoint`, `nsName`,
+`glueAddresses`, and `delegationRecord` for the parent-side FleetGslb aggregator to
+consume. `coreDNSEndpoint` is informational (the observed LB IP); `nsName` is the
+k8gb NS name for this cluster; `glueAddresses` are the pinned static IP(s) backing
+the NS glue (Phase 1: interim-sourced from the observed CoreDNS endpoint until a
+static Public IP is pinned in Phase 2); `delegationRecord` is a ready-to-use
+multi-line NS + A record delegation (one NS line plus one A line per glue
+address) for FleetGslb to write to the parent zone. Parameters: `dnsZone`
 (load-balanced zone), `parentZone`, `clusterGeoTag` (defaults to
 `azure-<location>-<id>`), and `strategy` (`failover`/`roundRobin`/`geoip`). See
 `examples/controlplane/with-k8gb.yaml`. Unlike AWS EKS, AKS's native cloud
