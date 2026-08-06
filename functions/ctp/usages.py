@@ -57,7 +57,7 @@ def _emit_aks_usage(rsp, id_val, cr_name, by_api_version, by_kind, by_name,
 
 
 def add_usage_resources(rsp, id_val, config, k8gb_enabled=False,
-                        argocd_enabled=False):
+                        argocd_enabled=False, k8gb_role_emitted=False):
     usage_release_aks = {
         "apiVersion": "protection.crossplane.io/v1beta1",
         "kind": "Usage",
@@ -187,6 +187,38 @@ def add_usage_resources(rsp, id_val, config, k8gb_enabled=False,
         }
         stamp(usage_ip, config)
         resource.update(rsp.desired.resources["usage-k8gb-ip-release"], usage_ip)
+
+        # The AKS cloud provider also LISTs Public IPs on the delete path
+        # (EnsureLoadBalancerDeleted), so keep the Network Contributor grant
+        # until the k8gb Release (and its LB) is gone. Gated on the same
+        # condition as the RoleAssignment itself (k8gb.py), otherwise this
+        # Usage dangles on a RoleAssignment that was never emitted.
+        if k8gb_role_emitted:
+            usage_ip_role = {
+                "apiVersion": "protection.crossplane.io/v1beta1",
+                "kind": "Usage",
+                "metadata": {
+                    "name": f"{id_val}-usage-k8gb-ip-role-release",
+                    "namespace": config["namespace"],
+                    "annotations": {"crossplane.io/composition-resource-name": "usage-k8gb-ip-role-release"}
+                },
+                "spec": {
+                    "of": {
+                        "apiVersion": "authorization.azure.m.upbound.io/v1beta1",
+                        "kind": "RoleAssignment",
+                        "resourceRef": {"name": f"{id_val}-k8gb-ip-role", "namespace": config["namespace"]}
+                    },
+                    "by": {
+                        "apiVersion": "helm.m.crossplane.io/v1beta1",
+                        "kind": "Release",
+                        "resourceRef": {"name": f"{id_val}-k8gb"}
+                    },
+                    "reason": "CoreDNS Public IP RoleAssignment must be released only after the k8gb Release (and its LB) is gone",
+                    "replayDeletion": True
+                }
+            }
+            stamp(usage_ip_role, config)
+            resource.update(rsp.desired.resources["usage-k8gb-ip-role-release"], usage_ip_role)
 
     if argocd_enabled:
         _emit_aks_usage(

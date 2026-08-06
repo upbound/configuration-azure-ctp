@@ -26,7 +26,11 @@ spec:
                 properties:
                   id:
                     type: string
-                    description: ID of this ControlPlane that other objects will use to refer to it.
+                    maxLength: 24
+                    description: >-
+                      ID of this ControlPlane that other objects will use to refer to it.
+                      Bounded so the derived k8gb nsName label (gslb-ns-<geoTag>-<flatZone>)
+                      stays within the 63-char DNS label limit for common locations/zones.
                   location:
                     type: string
                     description: Azure region where the resources will be created (e.g. "eastus", "westus2").

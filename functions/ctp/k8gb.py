@@ -14,8 +14,9 @@ nsName + glueAddresses + delegationRecord) for the FleetGslb aggregator to consu
 - CoreDNS is exposed by a plain `type: LoadBalancer` Service; AKS provisions an
   Azure Standard LB that supports UDP natively, so no LB-controller add-on is
   needed (unlike AWS EKS). A pinned Standard PublicIP MR keeps the NS glue
-  stable across LB recreates; the Release (and its LB) is withheld until the
-  IP is allocated, then bound to the Service via azure-pip-name annotations.
+  stable across LB recreates; the Release is emitted unconditionally with the
+  azure-pip-name annotation, and the Azure cloud provider attaches the named
+  Public IP once it is allocated and the RoleAssignment has propagated.
   The observe Object below reads the resulting LB endpoint back.
 - The Helm release name is pinned to `k8gb` (external-name) so its CoreDNS
   Service is `k8gb-coredns` in namespace `k8gb`, the name k8gb expects.
@@ -27,8 +28,8 @@ from .prelude import stamp
 
 
 def add_k8gb_resources(rsp, id_val, k8gb_param, geo_tag, ext_geo_tags,
-                       k8gb_deployed, location, provider_config, public_ip,
-                       public_ip_id, cluster_principal_id, config):
+                       k8gb_deployed, location, provider_config, public_ip_id,
+                       cluster_principal_id, config):
     dns_zone = k8gb_param.get("dnsZone", "")
     parent_zone = k8gb_param.get("parentZone", "")
 
@@ -102,15 +103,17 @@ def add_k8gb_resources(rsp, id_val, k8gb_param, geo_tag, ext_geo_tags,
             }
         }
     }
-    stamp(public_ip_mr, config, azure_tags=True)
+    stamp(public_ip_mr, config)
     resource.update(rsp.desired.resources["k8gb-ip"], public_ip_mr)
 
-    # Network Contributor on the reserved Public IP so the AKS SystemAssigned
-    # cluster identity can attach it to the CoreDNS LoadBalancer. The v2
-    # namespaced RoleAssignment has no principalIdRef/scopeRef resolvers, so
+    # Network Contributor on the Public IP's resource group so the AKS
+    # SystemAssigned cluster identity can attach it to the CoreDNS
+    # LoadBalancer. The Azure cloud provider lists Public IPs at resource-group
+    # scope (not per-resource), so the grant is scoped to the RG rather than
+    # just the IP; `{id}-rg` holds only this cluster's network resources. The
+    # v2 namespaced RoleAssignment has no principalIdRef/scopeRef resolvers, so
     # both are literal and the emit waits until the principalId and the Public
-    # IP resource ID are observed. Scope is the Public IP resource; widen to the
-    # network RG only if AKS reports it is insufficient.
+    # IP resource ID are observed.
     if public_ip_id and cluster_principal_id:
         role_assignment = {
             "apiVersion": "authorization.azure.m.upbound.io/v1beta1",
@@ -125,8 +128,10 @@ def add_k8gb_resources(rsp, id_val, k8gb_param, geo_tag, ext_geo_tags,
             "spec": {
                 "forProvider": {
                     "principalId": cluster_principal_id,
+                    "principalType": "ServicePrincipal",
+                    "skipServicePrincipalAadCheck": True,
                     "roleDefinitionName": "Network Contributor",
-                    "scope": public_ip_id
+                    "scope": public_ip_id.split("/providers/")[0]
                 },
                 "providerConfigRef": {
                     "name": provider_config,
@@ -137,17 +142,14 @@ def add_k8gb_resources(rsp, id_val, k8gb_param, geo_tag, ext_geo_tags,
         stamp(role_assignment, config)
         resource.update(rsp.desired.resources["k8gb-ip-role"], role_assignment)
 
-    # Bind the reserved IP to the CoreDNS LoadBalancer Service. Withhold the
-    # Release (which creates the LB) until Azure has allocated the IP, so the
-    # LB is created already pointing at it.
-    ip_ready = bool(public_ip)
-    if ip_ready:
-        values["coredns"]["service"] = {
-            "annotations": {
-                "service.beta.kubernetes.io/azure-pip-name": f"{id_val}-k8gb-ip",
-                "service.beta.kubernetes.io/azure-load-balancer-resource-group": f"{id_val}-rg"
-            }
+    # Bind the reserved IP to the CoreDNS LoadBalancer Service unconditionally
+    # (this only derives from id_val).
+    values["coredns"]["service"] = {
+        "annotations": {
+            "service.beta.kubernetes.io/azure-pip-name": f"{id_val}-k8gb-ip",
+            "service.beta.kubernetes.io/azure-load-balancer-resource-group": f"{id_val}-rg"
         }
+    }
 
     release_annotations = {
         "crossplane.io/composition-resource-name": "k8gb-release",
@@ -177,6 +179,11 @@ def add_k8gb_resources(rsp, id_val, k8gb_param, geo_tag, ext_geo_tags,
                 "namespace": "k8gb",
                 "skipCreateNamespace": False,
                 "wait": True,
+                # Covers the transient wait for the Public IP to allocate and
+                # the RoleAssignment to propagate before the LB attaches it.
+                # Kept below provider-helm's default reconcile timeout (~10m)
+                # so the wait completes within the reconcile budget.
+                "waitTimeout": "8m",
                 "values": values
             },
             "providerConfigRef": {
@@ -185,9 +192,8 @@ def add_k8gb_resources(rsp, id_val, k8gb_param, geo_tag, ext_geo_tags,
             }
         }
     }
-    if ip_ready:
-        stamp(release, config)
-        resource.update(rsp.desired.resources["k8gb-release"], release)
+    stamp(release, config)
+    resource.update(rsp.desired.resources["k8gb-release"], release)
 
     # Observe-only Object on the child CoreDNS Service to read its LB endpoint.
     coredns_observe = {

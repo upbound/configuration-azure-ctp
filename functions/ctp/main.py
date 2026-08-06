@@ -188,7 +188,8 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                      mgmt_policies, config)
     add_uxp_release(rsp, id_val, uxp_version, uxp_deployed, mgr_args, config)
     add_usage_resources(rsp, id_val, config, k8gb_enabled=k8gb_enabled,
-                        argocd_enabled=argocd_enabled)
+                        argocd_enabled=argocd_enabled,
+                        k8gb_role_emitted=bool(k8gb_public_ip_id and k8gb_cluster_principal_id))
 
     # cert-manager is always installed (free component, no license gate) so the
     # k8gb/argocd add-ons can rely on it for Gateway TLS independently of knative.
@@ -205,8 +206,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     if k8gb_enabled:
         add_k8gb_resources(rsp, id_val, k8gb, k8gb_geo_tag, k8gb_ext_geo_tags,
                            k8gb_deployed, location, provider_config,
-                           k8gb_public_ip, k8gb_public_ip_id,
-                           k8gb_cluster_principal_id, config)
+                           k8gb_public_ip_id, k8gb_cluster_principal_id, config)
 
     if argocd_enabled:
         add_argocd_resources(rsp, id_val, argocd, argocd_deployed,
@@ -258,4 +258,4 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     update_status(rsp, id_val, params, uxp_version, uxp_deployed, backup,
                  client_id, backup.get("location", ""), observed_resources,
                  nodes, ng_actual_vm_size, ng_size_mismatch, cluster_name, vpa,
-                 knative, k8gb, k8gb_geo_tag, k8gb_public_ip, license_conflict, config)
+                 knative, k8gb, k8gb_geo_tag, k8gb_public_ip, k8gb_deployed, license_conflict, config)
