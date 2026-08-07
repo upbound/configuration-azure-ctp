@@ -297,14 +297,51 @@ balancer until a `Gateway` exists, so plain control planes pay nothing.
 When `k8gb.enabled: "yes"`, the control plane becomes a **producer** in the fleet
 GSLB architecture (see `docs/ctp-addons-implementation-plan.md`): it installs the
 k8gb operator and CoreDNS exposed through an Azure Standard Load Balancer serving
-`:53`, and surfaces `status.controlplane.k8gb.coreDNSEndpoint` + `delegationRecord`
-for the parent-side FleetGslb aggregator to consume. Parameters: `dnsZone`
-(load-balanced zone), `parentZone`, `clusterGeoTag` (defaults to
-`azure-<location>-<id>`), and `strategy` (`failover`/`roundRobin`/`geoip`). See
-`examples/controlplane/with-k8gb.yaml`. Unlike AWS EKS, AKS's native cloud
-provider gives the CoreDNS Service a UDP-capable Standard LB, so no
-load-balancer-controller add-on is needed. GSLB is not yet functional end-to-end
-— nothing writes the NS delegation until FleetGslb exists.
+`:53`, and surfaces `status.controlplane.k8gb.coreDNSEndpoint`, `nsName`,
+`glueAddresses`, and `delegationRecord` for the parent-side FleetGslb aggregator to
+consume. `coreDNSEndpoint` is informational (the observed LB IP); `nsName` is the
+k8gb NS name for this cluster; `glueAddresses` are the pinned static IP(s) backing
+the NS glue; `delegationRecord` is a ready-to-use multi-line NS + A record
+delegation (one NS line plus one A line per glue address) for FleetGslb to write
+to the parent zone. Parameters: `dnsZone` (load-balanced zone), `parentZone`,
+`clusterGeoTag` (defaults to `azure-<location>-<id>`), and `strategy`
+(`failover`/`roundRobin`/`geoip`). See `examples/controlplane/with-k8gb.yaml`.
+Unlike AWS EKS, AKS's native cloud provider gives the CoreDNS Service a
+UDP-capable Standard LB, so no load-balancer-controller add-on is needed. GSLB is
+not yet functional end-to-end - nothing writes the NS delegation until FleetGslb
+exists.
+
+**CoreDNS is pinned to a static Public IP.** `glueAddresses` must stay stable
+across LB recreates (chart upgrades, node pool changes, etc.), so the
+composition reserves a static Azure Standard `PublicIP` (`<id>-k8gb-ip`) in the
+cluster's network resource group before installing k8gb. The k8gb Helm
+`Release` is emitted unconditionally, and the CoreDNS Service always carries
+the `service.beta.kubernetes.io/azure-pip-name` and
+`service.beta.kubernetes.io/azure-load-balancer-resource-group` annotations
+(the latter hardcodes `<id>-rg`); the Azure cloud provider binds the named
+reserved IP to the LB once it is allocated and the RoleAssignment below has
+propagated. `glueAddresses` and `delegationRecord` are populated straight from
+the pinned `PublicIP`'s `status.atProvider.ipAddress`, not from the observed
+Service endpoint.
+
+The CoreDNS Service is **UDP-only** (`use_tcp: false` on the k8gb chart's
+CoreDNS zone) - DNS glue lookups are UDP, and Azure Standard LB does not accept
+a mixed TCP+UDP Service on the same port on older clusters.
+
+Attaching a reserved Public IP to a LoadBalancer Service is itself an Azure
+RBAC-guarded operation. The composition grants the AKS cluster's SystemAssigned
+identity **Network Contributor** on the Public IP's resource group (not just
+the IP itself) via a namespaced `RoleAssignment` (`<id>-k8gb-ip-role`), using
+the principal ID read from the composed AKS XR's
+`status.aks.identityPrincipalId`. The grant is scoped to the resource group
+because the Azure cloud provider lists Public IPs at resource-group scope, not
+per-resource; `<id>-rg` holds only this cluster's network resources. This
+requires `configuration-azure-aks >= v2.0.3`: on older sub-configurations the
+AKS XR does not surface `status.aks.identityPrincipalId`, so the
+`RoleAssignment` (and its teardown `Usage`) are never created, the CoreDNS
+LoadBalancer cannot attach the reserved Public IP, and k8gb will not become
+ready. On teardown, a `Usage` defers releasing the Public IP until the k8gb
+`Release` (and the LB referencing the IP) is fully gone.
 
 ### ArgoCD
 
@@ -337,7 +374,7 @@ not enumerated. Verify availability in your target region with
 
 ## Testing
 
-* Composition tests: `up test run tests/test-controlplane` — 23 tests
+* Composition tests: `up test run tests/test-controlplane` - 32 tests
   covering basic dispatch, backup, license, schedule, VPA, Knative,
   install-from restore, RBAC, namespace targeting, managementMode, and the
   k8gb/ArgoCD add-ons.

@@ -207,6 +207,17 @@ def get_cluster_name(observed: Dict) -> str:
     return res.get("status", {}).get("aks", {}).get("clusterName", "")
 
 
+def get_cluster_principal_id(observed: Dict) -> str:
+    """Return the AKS cluster's SystemAssigned identity principalId from the
+    composed AKS XR's status.aks.identityPrincipalId (configuration-azure-aks
+    >= the release that surfaces it), or "" until present."""
+    obs = observed.get("aks")
+    if not obs:
+        return ""
+    res = obs.resource if hasattr(obs, "resource") else obs
+    return res.get("status", {}).get("aks", {}).get("identityPrincipalId", "")
+
+
 def derive_k8gb_geo_tag(k8gb_param: Optional[Dict], location: str,
                         id_val: str) -> str:
     """The k8gb clusterGeoTag, unique per control plane. Defaults to
@@ -255,3 +266,23 @@ def extract_coredns_endpoint(observed: Dict) -> str:
         return ""
     first = ingress[0]
     return first.get("ip") or first.get("hostname") or ""
+
+
+def extract_k8gb_public_ip(observed: Dict) -> str:
+    """The pinned k8gb CoreDNS static IP, read from the composed Azure PublicIP
+    MR's status.atProvider.ipAddress. Empty until Azure allocates it."""
+    obs = observed.get("k8gb-ip")
+    if not obs:
+        return ""
+    res = obs.resource if hasattr(obs, "resource") else obs
+    return res.get("status", {}).get("atProvider", {}).get("ipAddress", "")
+
+
+def extract_k8gb_public_ip_id(observed: Dict) -> str:
+    """The pinned k8gb Public IP's Azure resource ID (RoleAssignment scope).
+    Empty until the PublicIP MR reports it."""
+    obs = observed.get("k8gb-ip")
+    if not obs:
+        return ""
+    res = obs.resource if hasattr(obs, "resource") else obs
+    return res.get("status", {}).get("atProvider", {}).get("id", "")

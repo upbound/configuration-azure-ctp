@@ -7,7 +7,7 @@ spec:
   - apiVersion: pkg.crossplane.io/v1
     kind: Configuration
     package: xpkg.upbound.io/upbound/configuration-azure-aks
-    version: v2.0.2
+    version: v2.0.3
   - apiVersion: pkg.crossplane.io/v1
     kind: Configuration
     package: xpkg.upbound.io/upbound/configuration-azure-network

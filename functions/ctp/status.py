@@ -12,7 +12,7 @@ from .prelude import extract_coredns_endpoint
 def update_status(rsp, id_val, params, uxp_version, uxp_deployed, backup,
                  client_id, container_ref, observed, nodes, ng_actual_vm_size,
                  ng_size_mismatch, cluster_name, vpa, knative, k8gb,
-                 k8gb_geo_tag, license_conflict, config):
+                 k8gb_geo_tag, k8gb_public_ip, k8gb_deployed, license_conflict, config):
     # rsp.desired.composite.resource is a google.protobuf.Struct — convert
     # so we can read fields out of the partially-built XR.
     xr_dict = resource.struct_to_dict(rsp.desired.composite.resource)
@@ -107,24 +107,27 @@ def update_status(rsp, id_val, params, uxp_version, uxp_deployed, backup,
     if k8gb:
         k8gb_status = {"enabled": k8gb.get("enabled", "no")}
         if k8gb.get("enabled") == "yes":
+            dns_zone = k8gb.get("dnsZone", "")
+            parent_zone = k8gb.get("parentZone", "")
+            # k8gb getNsName (byte-identical v0.15.0..v0.20.0): strip the
+            # ".<parentZone>" suffix from the load-balanced zone, replace the
+            # remaining dots with dashes, and place the geo tag BEFORE the
+            # domain component. This is the contract FleetGslb consumes.
+            zone_label = dns_zone
+            suffix = f".{parent_zone}"
+            if zone_label.endswith(suffix):
+                zone_label = zone_label[: -len(suffix)]
+            zone_label = zone_label.replace(".", "-")
+            ns_name = f"gslb-ns-{k8gb_geo_tag}-{zone_label}.{parent_zone}"
+            k8gb_status["nsName"] = ns_name
             endpoint = extract_coredns_endpoint(observed)
             if endpoint:
-                dns_zone = k8gb.get("dnsZone", "")
-                parent_zone = k8gb.get("parentZone", "")
-                # k8gb getNsName (byte-identical v0.15.0..v0.20.0): strip the
-                # ".<parentZone>" suffix from the load-balanced zone, replace the
-                # remaining dots with dashes, and place the geo tag BEFORE the
-                # domain component. This is the contract FleetGslb consumes.
-                zone_label = dns_zone
-                suffix = f".{parent_zone}"
-                if zone_label.endswith(suffix):
-                    zone_label = zone_label[: -len(suffix)]
-                zone_label = zone_label.replace(".", "-")
-                ns_name = f"gslb-ns-{k8gb_geo_tag}-{zone_label}.{parent_zone}"
                 k8gb_status["coreDNSEndpoint"] = endpoint
-                k8gb_status["delegationRecord"] = (
-                    f"{dns_zone}. NS {ns_name}. ; {ns_name}. A {endpoint}"
-                )
+            if k8gb_public_ip and k8gb_deployed and endpoint == k8gb_public_ip:
+                k8gb_status["glueAddresses"] = [k8gb_public_ip]
+                lines = [f"{dns_zone}. 30 IN NS {ns_name}."]
+                lines.append(f"{ns_name}. 30 IN A {k8gb_public_ip}")
+                k8gb_status["delegationRecord"] = "\n".join(lines)
         status["controlplane"]["k8gb"] = k8gb_status
 
     conditions = []
