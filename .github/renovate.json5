@@ -48,6 +48,11 @@
       matchFileNames: ['examples/**'],
       groupName: 'examples'
     },
+    {
+      matchManagers: ['pep621'],
+      matchFileNames: ['functions/**'],
+      groupName: 'python function dependencies',
+    },
   ],
   customManagers: [
     {
