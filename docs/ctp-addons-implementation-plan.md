@@ -37,9 +37,13 @@ Extend the `ControlPlane` composition so a child AKS cluster gets:
 ## Repo orientation (for fresh context)
 
 - Composition function in `functions/ctp/` (Python). Entry point
-  `main.py::compose(...)`; sibling modules: `prelude.py` (helpers), `network.py`,
+  `function/fn.py::compose(...)`; sibling modules under `function/`: `prelude.py` (helpers), `network.py`,
   `aks.py`, `uxp.py`, `usages.py`, `backup.py`, `workload_identity.py`,
   `licensing.py`, `vpa.py`, `knative.py`, `runtime_config.py`, `status.py`.
+  (The step narratives below predate the embedded-layout migration and say
+  `main.py` for the dispatcher that conditionally calls each
+  `add_*_resources(...)`; that logic now lives in `function/fn.py`. The new
+  `function/main.py` is the gRPC serving CLI, a separate file.)
 - XRD: `apis/ctp/definition.yaml`. Composition: `apis/ctp/composition.yaml`
   (pipeline: `function-extra-resources` fetches all `ControlPlane`s into
   `allControlPlanes`, then the Python `ctp` function, then `function-auto-ready`).
@@ -106,7 +110,7 @@ Extend the `ControlPlane` composition so a child AKS cluster gets:
 
 ## Step 1 - cert-manager decouple (always-on refactor)
 
-- Create `functions/ctp/certmanager.py` with `add_certmanager_resources(rsp, id_val, config)`
+- Create `functions/ctp/function/certmanager.py` with `add_certmanager_resources(rsp, id_val, config)`
   that emits the cert-manager `Release` currently built inside `knative.py`
   (chart `cert-manager` from `https://charts.jetstack.io`, `crds.enabled: true`,
   `wait: true`, stale-Ready workaround). Use a stable resource name, e.g.
@@ -129,7 +133,7 @@ Extend the `ControlPlane` composition so a child AKS cluster gets:
 `k8gb.enabled OR argocd.enabled` (k8gb is now pinned to v0.20.0). Kept below for
 historical context.
 
-- Create `functions/ctp/ingress.py` with `add_ingress_resources(rsp, id_val, config)`:
+- Create `functions/ctp/function/ingress.py` with `add_ingress_resources(rsp, id_val, config)`:
   an `ingress-nginx` `Release` (repo `https://kubernetes.github.io/ingress-nginx`,
   pinned + renovate), **standard LoadBalancer service** (not hostNetwork),
   `wait: true`, stale-Ready workaround, child-cluster ProviderConfig.
@@ -147,7 +151,7 @@ historical context.
   - `status.controlplane.k8gb`: `enabled`, `coreDNSEndpoint`, `nsName`,
     `glueAddresses`, `delegationRecord`. `delegationRecord` is a multi-line NS + A
     record; `coreDNSEndpoint` is informational only.
-- **`functions/ctp/k8gb.py`** `add_k8gb_resources(...)`:
+- **`functions/ctp/function/k8gb.py`** `add_k8gb_resources(...)`:
   - k8gb `Release` (chart `k8gb`, repo `https://www.k8gb.io`, **version pinned to
     match resilient-ctp's `Gslb` v1beta1 consumer - not latest**): values reuse
     resilient-ctp's operator shape - `k8gb.dnsZones`, `k8gb.clusterGeoTag`,
@@ -177,10 +181,10 @@ historical context.
     value, so there are not two writers to this Helm value.
   - **Observe-only `Object`** (`managementPolicies: ["Observe"]`) on the child k8gb
     CoreDNS `Service` to read `status.loadBalancer.ingress`.
-- **`functions/ctp/usages.py`**: add `Usage` guards (`of: AKS, by: ...`) for
+- **`functions/ctp/function/usages.py`**: add `Usage` guards (`of: AKS, by: ...`) for
   **both** the k8gb `Release` **and** the CoreDNS observe `Object`, emitted only
   when k8gb is enabled.
-- **`functions/ctp/status.py`**: populate `status.controlplane.k8gb` - `enabled`,
+- **`functions/ctp/function/status.py`**: populate `status.controlplane.k8gb` - `enabled`,
   `coreDNSEndpoint` (from the observed CoreDNS Service Object, informational only),
   `nsName` (the k8gb NS name for this cluster), `glueAddresses` (pinned static
   IP(s) backing the NS glue), `delegationRecord` (a multi-line NS + A record - one
@@ -198,7 +202,7 @@ historical context.
 
 - **XRD**: `spec.parameters.argocd`: `enabled` (`yes`/`no`, default `no`),
   `hostname` (UI Ingress host), `url` (public git repo).
-- **`functions/ctp/argo.py`** `add_argocd_resources(...)`:
+- **`functions/ctp/function/argo.py`** `add_argocd_resources(...)`:
   - ArgoCD `Release` (chart `argo-cd`, repo `https://argoproj.github.io/argo-helm`,
     pinned + renovate), `wait: true`, stale-Ready workaround, child ProviderConfig.
   - UI `Ingress` (host `argocd.hostname`, nginx ingress class) with TLS. For a
@@ -212,7 +216,7 @@ historical context.
     **Gate this Object on the ArgoCD release being deployed** (so the Application
     CRD exists), same pattern as the KnativeServing CR gate. Public repo -> no
     repo Secret.
-- **`functions/ctp/usages.py`**: `of: AKS, by: ...` `Usage` guards for the argocd
+- **`functions/ctp/function/usages.py`**: `of: AKS, by: ...` `Usage` guards for the argocd
   `Release` and each argocd `Object` (Ingress, Certificate, Application), emitted
   only when argocd is enabled.
 - **`main.py`**: `if argocd and argocd.get("enabled") == "yes": add_argocd_resources(...)`.

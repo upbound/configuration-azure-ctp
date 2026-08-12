@@ -30,8 +30,10 @@ its LoadBalancer endpoint for the status contract).
 
 from datetime import datetime, timezone
 
-from crossplane.function import resource
+import grpc
+from crossplane.function import logging, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
+from crossplane.function.proto.v1 import run_function_pb2_grpc as grpcv1
 
 from .aks import add_aks_resources
 from .argo import add_argocd_resources
@@ -259,3 +261,21 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                  client_id, backup.get("location", ""), observed_resources,
                  nodes, ng_actual_vm_size, ng_size_mismatch, cluster_name, vpa,
                  knative, k8gb, k8gb_geo_tag, k8gb_public_ip, k8gb_deployed, license_conflict, config)
+
+
+class FunctionRunner(grpcv1.FunctionRunnerService):
+    """Handles gRPC RunFunctionRequests for the Azure ControlPlane composition."""
+
+    def __init__(self):
+        """Create a new FunctionRunner."""
+        self.log = logging.get_logger()
+
+    async def RunFunction(
+        self, req: fnv1.RunFunctionRequest, _: grpc.aio.ServicerContext
+    ) -> fnv1.RunFunctionResponse:
+        """Build a response, run the composition, and return it."""
+        log = self.log.bind(tag=req.meta.tag)
+        log.info("Running function")
+        rsp = response.to(req)
+        compose(req, rsp)
+        return rsp

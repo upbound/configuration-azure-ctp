@@ -250,7 +250,7 @@ When this composition provisions an AKS cluster, the cluster is configured with:
   is installed, so any pod labelled `azure.workload.identity/use: "true"`
   receives a projected SA token automatically.
 * UXP installed in `crossplane-system`. UXP's backup controller already uses
-  Workload Identity (wired by `functions/ctp/workload_identity.py`) when
+  Workload Identity (wired by `functions/ctp/function/workload_identity.py`) when
   `spec.parameters.backup.enabled: "yes"`.
 
 This composition deliberately does **not** install Azure providers or a

@@ -59,6 +59,6 @@ upper cluster yourself.
 This configuration *creates* AKS clusters with `oidcIssuerEnabled: true` and
 `workloadIdentityEnabled: true`, then wires a UserAssignedIdentity +
 FederatedIdentityCredential for the UXP backup controller on the new cluster
-(see `functions/ctp/workload_identity.py`). That is independent of the
+(see `functions/ctp/function/workload_identity.py`). That is independent of the
 ProviderConfig manifests in this directory, which authenticate the *upper*
 cluster's provider pods to Azure.
