@@ -1,7 +1,7 @@
 """05-backup — StorageAccount + Container, observe AKS, BackupConfig, RBAC, BackupSchedule.
 
 All resources here are gated on backup.enabled == "yes" (the caller in
-main.py handles that gate). The BackupConfig/RBAC Objects are emitted
+fn.py handles that gate). The BackupConfig/RBAC Objects are emitted
 unconditionally inside that gate — provider-kubernetes Object resources stay
 pending until UXP installs the BackupConfig CRD, then reconcile naturally.
 
