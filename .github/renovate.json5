@@ -18,13 +18,12 @@
     'automated',
     'run-e2e-tests',
   ],
-  ignorePaths: [ // default renovate ignorePaths without '**/examples/**'
+  ignorePaths: [ // renovate defaults minus '**/examples/**' and '**/tests/**' (so pep621 pins under tests/ are watched)
     '**/node_modules/**',
     '**/bower_components/**',
     '**/vendor/**',
     '**/__tests__/**',
     '**/test/**',
-    '**/tests/**',
     '**/__fixtures__/**'
   ],
   crossplane: {
@@ -52,6 +51,14 @@
       matchManagers: ['pep621'],
       matchFileNames: ['functions/**'],
       groupName: 'python function dependencies',
+    },
+    {
+      matchManagers: ['pep621'],
+      matchFileNames: ['tests/**'],
+      groupName: 'python test dependencies',
+      // test-only pins are gated by the offline composition suite; drop the
+      // run-e2e-tests label so their bumps don't spend a real AKS e2e cluster
+      labels: ['automated'],
     },
   ],
   customManagers: [

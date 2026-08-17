@@ -3,7 +3,7 @@ RoleAssignment + ServiceAccount annotation + controller restart + optional
 Restore-from-backup.
 
 Azure analog of IRSA. Gated by the caller on backup.enabled == "yes", OIDC
-issuer URL present, and UXP deployed — see compose() in main.py.
+issuer URL present, and UXP deployed — see compose() in fn.py.
 
 Where AWS IRSA uses an OIDC Provider + IAM Role with a federated trust
 policy + a Policy + a RolePolicyAttachment, Azure Workload Identity uses:
