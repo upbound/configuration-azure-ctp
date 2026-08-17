@@ -56,6 +56,9 @@
       matchManagers: ['pep621'],
       matchFileNames: ['tests/**'],
       groupName: 'python test dependencies',
+      // test-only pins are gated by the offline composition suite; drop the
+      // run-e2e-tests label so their bumps don't spend a real AKS e2e cluster
+      labels: ['automated'],
     },
   ],
   customManagers: [
