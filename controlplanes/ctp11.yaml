@@ -1,0 +1,14 @@
+apiVersion: azure.platform.upbound.io/v1alpha1
+kind: ControlPlane
+metadata:
+  name: ucpctp1
+  namespace: crossplane-system
+spec:
+  parameters:
+    id: ucpctptenant1
+    managementMode: Provision
+    location: swedencentral
+    version: "1.35"
+    nodes:
+      count: 3
+      vmSize: Standard_D2s_v3
