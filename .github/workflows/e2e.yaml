@@ -48,7 +48,4 @@ jobs:
         run: up ctx ${{ env.UP_ORG }}/upbound-gcp-us-central-1/${{ env.UP_GROUP }}
 
       - name: Run e2e tests
-        # Only the correctness test runs on the shared cloud control plane; the
-        # provisioning tests (tests/provision/*) run on local KIND via
-        # provision.yaml, never here.
-        run: up test run tests/e2etest-controlplane --e2e
+        run: up test run tests/* --e2e
