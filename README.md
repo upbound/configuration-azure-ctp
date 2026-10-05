@@ -180,24 +180,31 @@ license-controller validates the signature against the downstream cluster's
 node count / cluster type.
 
 **Apply the license JSON ONLY as a Kubernetes Secret on the management
-cluster** — one Secret can serve as the source for any number of
-`ControlPlane` XRs:
+cluster.**
+
+**Use a separate license key for every downstream control plane.** The
+[UXP license management docs](https://docs.upbound.io/manuals/uxp/howtos/license-management/#kubectl)
+state: "You may not re-use licenses across multiple Upbound Crossplane
+clusters." Each `ControlPlane` XR creates its own downstream UXP cluster, so
+do not point two `ControlPlane` XRs at the same license Secret, and do not
+re-use the management cluster's own license. Store one Secret per downstream
+control plane on the management cluster, each holding a distinct license:
 
 ```bash
-kubectl create secret generic uxp-license \
-  --from-file=license.json=./license.json \
+kubectl create secret generic uxp-license-<controlplane-name> \
+  --from-file=license.json=./license-<controlplane-name>.json \
   -n crossplane-system \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-Then each `ControlPlane` XR references it:
+Then each `ControlPlane` XR references its own Secret:
 
 ```yaml
 spec:
   parameters:
     license:
       secretRef:
-        name: uxp-license
+        name: uxp-license-<controlplane-name>
         namespace: crossplane-system
 ```
 
@@ -232,7 +239,7 @@ you need a license whose embedded claims do not include a Kind-only
 restriction. Inspect the embedded claims with:
 
 ```bash
-kubectl get secret -n crossplane-system uxp-license \
+kubectl get secret -n crossplane-system uxp-license-<controlplane-name> \
   -o jsonpath='{.data.license\.json}' | base64 -d | python3 -m json.tool
 ```
 
@@ -393,7 +400,9 @@ The E2E test requires:
   `backup.enabled: yes` (see "Required Azure permissions" above).
 - A `uxp-license` Secret in `crossplane-system` containing a license whose
   embedded `restrictions.clusterType` does NOT restrict to single-node
-  Kind clusters.
+  Kind clusters. Dedicate this license to the test control plane; do not
+  re-use a key that another UXP cluster already uses (see "UXP enterprise
+  license" above).
 - Sufficient regional vCPU quota (≥ 20 in the chosen VM family).
 
 ## Dynamic provisioning
