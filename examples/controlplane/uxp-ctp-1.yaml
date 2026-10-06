@@ -17,7 +17,7 @@ spec:
       schedule: "*/15 * * * *"
     license:
       secretRef:
-        name: uxp-license
+        name: uxp-license-uxp-ctp-1
         namespace: default
     knative:
       enabled: "yes"

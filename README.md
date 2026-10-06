@@ -398,11 +398,6 @@ The E2E test requires:
   `platform` (see `examples/install/` for the three flavors).
 - An Azure principal with `User Access Administrator` (or `Owner`) when
   `backup.enabled: yes` (see "Required Azure permissions" above).
-- A `uxp-license` Secret in `crossplane-system` containing a license whose
-  embedded `restrictions.clusterType` does NOT restrict to single-node
-  Kind clusters. Dedicate this license to the test control plane; do not
-  re-use a key that another UXP cluster already uses (see "UXP enterprise
-  license" above).
 - Sufficient regional vCPU quota (≥ 20 in the chosen VM family).
 
 ## Dynamic provisioning

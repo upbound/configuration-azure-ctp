@@ -1,9 +1,13 @@
-# Pre-requisite: create the UXP license secret on the management cluster
-# in the crossplane-system namespace. Either of these works:
-#   up uxp license apply <path-to-license.json>          # key=license.json
-#   kubectl create secret generic uxp-license \           # key=license.json
+# Pre-requisite: create a UXP license secret for THIS control plane on the
+# management cluster in the crossplane-system namespace. Each downstream
+# control plane needs its own license key; licenses may not be re-used across
+# UXP clusters:
+# https://docs.upbound.io/manuals/uxp/howtos/license-management/#kubectl
+#   kubectl create secret generic uxp-license-prod-control-plane \
 #     --from-file=license.json=<path-to-license.json> \
 #     -n crossplane-system
+# Do not use `up uxp license apply` here: it also creates a License CR on the
+# management cluster (see README).
 # The composition reads the license.json key directly via bracket-notation
 # field path; no manual re-keying needed.
 #
@@ -37,5 +41,5 @@ spec:
       maxMemory: "4000Mi"
     license:
       secretRef:
-        name: uxp-license
+        name: uxp-license-prod-control-plane
         namespace: crossplane-system
