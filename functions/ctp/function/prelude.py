@@ -31,27 +31,36 @@ def stamp(resource_dict: dict, config: Dict, azure_tags: bool = False) -> None:
         tags["last-reconcile-date"] = config["last_reconcile_date"]
 
 
-def check_license_conflict(id_val: str, license_param: Optional[Dict],
+def check_license_conflict(xr: Dict, license_param: Optional[Dict],
                            all_ctps: List[Dict]) -> str:
-    """Return the name of another ControlPlane that already claims the same
-    license secret (namespace/name pair), or "" if there is no conflict."""
+    """Return namespace/name of an older ControlPlane that claims the same
+    license secret (namespace/name pair), or "" if there is no conflict. The
+    oldest claimant keeps the license, so a newcomer never strips a live one."""
     if not license_param or not all_ctps:
         return ""
 
-    my_ns = license_param.get("secretRef", {}).get("namespace", "default")
-    my_name = license_param.get("secretRef", {}).get("name", "")
-    my_key = f"{my_ns}/{my_name}"
+    def secret_key(lic: Dict) -> str:
+        ref = lic.get("secretRef", {})
+        return f"{ref.get('namespace', 'default')}/{ref.get('name', '')}"
 
+    def identity(obj: Dict) -> tuple:
+        meta = obj.get("metadata", {})
+        return (meta.get("namespace", ""), meta.get("name", ""))
+
+    def claim_order(obj: Dict) -> tuple:
+        # A missing creationTimestamp sorts last; namespace/name breaks ties.
+        ts = obj.get("metadata", {}).get("creationTimestamp") or ""
+        return (ts == "", ts, identity(obj))
+
+    my_key = secret_key(license_param)
     for ctp in all_ctps:
-        c_name = ctp.get("metadata", {}).get("name", "")
-        if c_name and c_name != id_val:
-            c_license = ctp.get("spec", {}).get("parameters", {}).get("license", {})
-            if c_license and c_license.get("secretRef"):
-                c_ns = c_license["secretRef"].get("namespace", "default")
-                c_name2 = c_license["secretRef"].get("name", "")
-                c_key = f"{c_ns}/{c_name2}"
-                if c_name2 and c_key == my_key:
-                    return c_name
+        if identity(ctp) == identity(xr):
+            continue
+        c_license = ctp.get("spec", {}).get("parameters", {}).get("license") or {}
+        if (c_license.get("secretRef", {}).get("name")
+                and secret_key(c_license) == my_key
+                and claim_order(ctp) < claim_order(xr)):
+            return "/".join(identity(ctp))
     return ""
 
 
@@ -235,14 +244,14 @@ def derive_k8gb_ext_geo_tags(id_val: str, dns_zone: str, my_tag: str,
     single-cluster start."""
     tags = set()
     for ctp in all_ctps:
-        c_name = ctp.get("metadata", {}).get("name", "")
-        if not c_name or c_name == id_val:
-            continue
         c_params = ctp.get("spec", {}).get("parameters", {})
+        c_id = c_params.get("id", "")
+        if not c_id or c_id == id_val:
+            continue
         c_k8gb = c_params.get("k8gb", {}) or {}
         if c_k8gb.get("enabled") != "yes" or c_k8gb.get("dnsZone") != dns_zone:
             continue
-        c_tag = derive_k8gb_geo_tag(c_k8gb, c_params.get("location", ""), c_name)
+        c_tag = derive_k8gb_geo_tag(c_k8gb, c_params.get("location", ""), c_id)
         if c_tag and c_tag != my_tag:
             tags.add(c_tag)
     return ",".join(sorted(tags))

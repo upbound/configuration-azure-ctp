@@ -31,7 +31,7 @@ its LoadBalancer endpoint for the status contract).
 from datetime import datetime, timezone
 
 import grpc
-from crossplane.function import logging, resource, response
+from crossplane.function import logging, request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from crossplane.function.proto.v1 import run_function_pb2_grpc as grpcv1
 
@@ -121,13 +121,14 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     k8gb_enabled = bool(k8gb) and k8gb.get("enabled") == "yes"
     argocd_enabled = bool(argocd) and argocd.get("enabled") == "yes"
 
-    # function-extra-resources delivers `allControlPlanes` via the
-    # apiextensions.crossplane.io/extra-resources context key.
-    context_dict = resource.struct_to_dict(req.context)
-    extra_ctx = context_dict.get("apiextensions.crossplane.io/extra-resources", {})
-    all_ctps = extra_ctx.get("allControlPlanes", [])
+    # Every ControlPlane in every namespace; Crossplane fetches them and re-runs
+    # the function. MatchLabels is set explicitly: require_resources drops an
+    # empty one, leaving the selector with no match criterion.
+    rsp.requirements.resources["allControlPlanes"].CopyFrom(fnv1.ResourceSelector(
+        api_version=xr["apiVersion"], kind=xr["kind"], match_labels=fnv1.MatchLabels()))
+    all_ctps = request.get_required_resources(req, "allControlPlanes")
 
-    license_conflict = check_license_conflict(id_val, license_param, all_ctps)
+    license_conflict = check_license_conflict(xr, license_param, all_ctps)
 
     # k8gb geo tags: this cluster's unique tag, plus same-cloud k8gb peers on
     # the same dnsZone (cross-cloud peers are injected later by FleetGslb).

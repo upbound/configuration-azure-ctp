@@ -208,6 +208,9 @@ spec:
         namespace: crossplane-system
 ```
 
+A `ControlPlane` whose license Secret an older `ControlPlane` already uses reports a
+`LicenseConflict` condition and gets no license.
+
 **Do NOT run `up uxp license apply <license.json>` on the management cluster**
 when the license is intended for a downstream control plane. That command
 creates **both** a Secret (which is what we need) AND a `License` CR on the
