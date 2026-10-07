@@ -36,7 +36,9 @@ def check_license_conflict(xr: Dict, license_param: Optional[Dict],
     """Return namespace/name of an older ControlPlane that claims the same
     license secret (namespace/name pair), or "" if there is no conflict. Only
     the oldest claimant may install it; compose keeps a license an XR already
-    has installed, so the guard never strips a live one."""
+    has installed, so the guard never strips a live one. A terminating
+    ControlPlane holds no claim, so a replacement need not wait out its
+    teardown."""
     if not license_param or not all_ctps:
         return ""
 
@@ -55,7 +57,7 @@ def check_license_conflict(xr: Dict, license_param: Optional[Dict],
 
     my_key = secret_key(license_param)
     for ctp in all_ctps:
-        if identity(ctp) == identity(xr):
+        if identity(ctp) == identity(xr) or ctp.get("metadata", {}).get("deletionTimestamp"):
             continue
         c_license = ctp.get("spec", {}).get("parameters", {}).get("license") or {}
         if (c_license.get("secretRef", {}).get("name")
