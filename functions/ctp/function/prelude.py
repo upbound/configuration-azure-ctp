@@ -34,8 +34,9 @@ def stamp(resource_dict: dict, config: Dict, azure_tags: bool = False) -> None:
 def check_license_conflict(xr: Dict, license_param: Optional[Dict],
                            all_ctps: List[Dict]) -> str:
     """Return namespace/name of an older ControlPlane that claims the same
-    license secret (namespace/name pair), or "" if there is no conflict. The
-    oldest claimant keeps the license, so a newcomer never strips a live one."""
+    license secret (namespace/name pair), or "" if there is no conflict. Only
+    the oldest claimant may install it; compose keeps a license an XR already
+    has installed, so the guard never strips a live one."""
     if not license_param or not all_ctps:
         return ""
 
@@ -162,6 +163,21 @@ def is_license_applied(observed: Dict) -> bool:
         if cond.get("type") == "Ready" and cond.get("status") == "True":
             return True
     return False
+
+
+def get_installed_license(observed: Dict) -> Optional[Dict]:
+    """The license param ({"secretRef": {name, namespace}}) this XR already has
+    installed, read from the observed uxp-license-secret Object's
+    spec.references[].patchesFrom, or None."""
+    obs = observed.get("uxp-license-secret")
+    if not obs:
+        return None
+    res = obs.resource if hasattr(obs, "resource") else obs
+    for ref in res.get("spec", {}).get("references", []):
+        pf = ref.get("patchesFrom", {})
+        if pf.get("name"):
+            return {"secretRef": {"name": pf["name"], "namespace": pf.get("namespace", "default")}}
+    return None
 
 
 def build_manager_args(vpa: Optional[Dict], knative: Optional[Dict],

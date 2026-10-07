@@ -54,6 +54,7 @@ from .prelude import (
     extract_oidc_info,
     get_cluster_name,
     get_cluster_principal_id,
+    get_installed_license,
     get_nodepool_actual_vm_size,
     get_storage_account_id,
     get_workload_identity_client_id,
@@ -227,8 +228,11 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                                        install_from, client_id, principal_id,
                                        storage_account_id, config)
 
-    if license_param and not license_conflict:
-        add_license_resources(rsp, id_val, license_param, config)
+    # On conflict, keep a license already installed, from the Secret it was
+    # installed from; only a new claim is withheld.
+    installed_license = get_installed_license(observed_resources) if license_conflict else None
+    if license_param and (not license_conflict or installed_license):
+        add_license_resources(rsp, id_val, installed_license or license_param, config)
 
     if vpa and vpa.get("enabled") == "yes" and features_licensed:
         add_vpa_resources(rsp, id_val, vpa, vpa_ready, config)
