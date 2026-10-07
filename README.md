@@ -210,7 +210,9 @@ spec:
 
 A `ControlPlane` whose license Secret an older `ControlPlane` already uses reports a
 `LicenseConflict` condition and gets no license. A license it already has installed is
-kept, from the Secret it was installed from, until the conflict is resolved.
+kept, from the Secret it was installed from, until the conflict is resolved. A `ControlPlane`
+being deleted holds no claim, and the condition message names the oldest other
+`ControlPlane` on the Secret.
 
 **Do NOT run `up uxp license apply <license.json>` on the management cluster**
 when the license is intended for a downstream control plane. That command
