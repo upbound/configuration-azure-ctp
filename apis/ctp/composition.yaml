@@ -11,21 +11,6 @@ spec:
   mode: Pipeline
   pipeline:
   - functionRef:
-      name: crossplane-contrib-function-extra-resources
-    step: fetch-control-planes
-    input:
-      apiVersion: extra-resources.fn.crossplane.io/v1beta1
-      kind: Input
-      spec:
-        extraResources:
-        - apiVersion: azure.platform.upbound.io/v1alpha1
-          kind: ControlPlane
-          into: allControlPlanes
-          type: Selector
-          selector:
-            maxMatch: 100
-            minMatch: 0
-  - functionRef:
       name: upbound-configuration-azure-ctpctp
     step: ctp
   # function-auto-ready aggregates each composed resource's readiness into the
