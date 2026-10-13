@@ -46,10 +46,6 @@ spec:
     version: v1.2.1
   - apiVersion: pkg.crossplane.io/v1
     kind: Function
-    package: xpkg.upbound.io/crossplane-contrib/function-extra-resources
-    version: v0.3.0
-  - apiVersion: pkg.crossplane.io/v1
-    kind: Function
     package: xpkg.upbound.io/crossplane-contrib/function-auto-ready
     version: v0.6.4
   description: Azure AKS Control Plane configuration with optional UXP backup support
