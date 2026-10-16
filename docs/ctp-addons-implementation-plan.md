@@ -93,7 +93,7 @@ Extend the `ControlPlane` composition so a child AKS cluster gets:
   `MixedProtocolLBService` gate (GA in 1.26, on by default in supported AKS) - one
   Service with both ports is expected to work; verify on the target AKS version.
 - k8gb: gated by `k8gb.enabled`; **CoreDNS exposed via a native Azure Standard LB
-  serving UDP:53 (UDP-only)**, **`extdns.enabled: false`** (no external-dns).
+  serving UDP and TCP :53**, **`extdns.enabled: false`** (no external-dns).
   **Pin the k8gb chart to a version whose `Gslb` CRD matches resilient-ctp's
   consumer (`k8gb.absa.oss/v1beta1`; resilient-ctp installs v0.15.0) - do NOT track
   latest**, or the producer/consumer CRD contract drifts. Reuse resilient-ctp's
@@ -158,7 +158,7 @@ historical context.
     `k8gb.extGslbClustersGeoTags`, `k8gb.edgeDNSServers`,
     `k8gb.deployCrds/deployRbac`; plus **`extdns.enabled: false`**. Stale-Ready
     workaround.
-  - **Expose CoreDNS via a native Azure Standard LB serving UDP:53 (UDP-only).**
+  - **Expose CoreDNS via a native Azure Standard LB serving UDP and TCP :53.**
     No LB-controller add-on is needed (AKS handles it). **Verify the exact
     k8gb/coredns chart keys** for LB exposure (e.g. `k8gb.coreDNSExposed` and the
     coredns subchart's `serviceType` / `serviceAnnotations`) - do not assume. For a
@@ -167,7 +167,7 @@ historical context.
     `provider_config`) referenced by
     `service.beta.kubernetes.io/azure-load-balancer-ipv4` (+
     `azure-load-balancer-resource-group` if the IP is in another RG).
-  - UDP-only CoreDNS via `coredns.servers[].zones[].use_tcp=false` - verify keys
+  - TCP :53 alongside UDP via `coredns.servers[].zones[].use_tcp=true` - verify keys
     against k8gb chart v0.20.0 with `helm template` before the e2e gate.
   - `clusterGeoTag` default must be **unique per control plane** - `azure-<location>`
     collides if two CPs share a location; incorporate the CP `id`

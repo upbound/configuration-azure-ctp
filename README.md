@@ -337,9 +337,23 @@ propagated. `glueAddresses` and `delegationRecord` are populated straight from
 the pinned `PublicIP`'s `status.atProvider.ipAddress`, not from the observed
 Service endpoint.
 
-The CoreDNS Service is **UDP-only** (`use_tcp: false` on the k8gb chart's
-CoreDNS zone) - DNS glue lookups are UDP, and Azure Standard LB does not accept
-a mixed TCP+UDP Service on the same port on older clusters.
+The CoreDNS Service serves **UDP and TCP :53** (`use_tcp: true` on the k8gb
+chart's CoreDNS zone), as k8gb requires. Mixed-protocol LoadBalancer Services
+are GA since Kubernetes 1.26; the Azure cloud provider creates one LB rule per
+port and protocol on the pinned Public IP.
+
+**Upgrading control planes with k8gb enabled:** earlier releases created the
+CoreDNS Service UDP-only, and the Helm upgrade cannot add TCP 53 to it: Service
+ports merge on `port`, so the TCP entry merges into the UDP one
+([kubernetes/kubernetes#105610](https://github.com/kubernetes/kubernetes/issues/105610)).
+Run once per existing child cluster after the upgrade:
+
+```bash
+kubectl -n k8gb patch svc k8gb-coredns --type=json \
+  -p '[{"op":"add","path":"/spec/ports/-","value":{"name":"tcp-5353","port":53,"protocol":"TCP","targetPort":5353}}]'
+```
+
+Later Helm upgrades then leave both ports in place.
 
 Attaching a reserved Public IP to a LoadBalancer Service is itself an Azure
 RBAC-guarded operation. The composition grants the AKS cluster's SystemAssigned
