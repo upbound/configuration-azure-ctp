@@ -33,10 +33,13 @@ def stamp(resource_dict: dict, config: Dict, azure_tags: bool = False) -> None:
 
 def check_license_conflict(xr: Dict, license_param: Optional[Dict],
                            all_ctps: List[Dict]) -> str:
-    """Return namespace/name of the oldest other ControlPlane that claims the
-    same license secret (namespace/name pair), or "" if there is no conflict.
-    Only the oldest claimant may install it; compose keeps a license an XR
-    already has installed, so the guard never strips a live one. A terminating
+    """Return namespace/name of the other ControlPlane that owns the license
+    secret (namespace/name pair) this XR requests, or "" if this XR owns it.
+    A holder (status.controlplane.license, the Secret its installed license
+    comes from) outranks any XR that is not, so a same-second tie or a reset
+    creationTimestamp never hands a held license to a second XR; otherwise the
+    oldest requester owns it. Compose keeps a license an XR already has
+    installed, so the guard never strips a live one. A terminating
     ControlPlane holds no claim, so a replacement need not wait out its
     teardown."""
     if not license_param or not all_ctps:
@@ -50,22 +53,28 @@ def check_license_conflict(xr: Dict, license_param: Optional[Dict],
         meta = obj.get("metadata", {})
         return (meta.get("namespace", ""), meta.get("name", ""))
 
-    def claim_order(obj: Dict) -> tuple:
-        # A missing creationTimestamp sorts last; namespace/name breaks ties.
-        ts = obj.get("metadata", {}).get("creationTimestamp") or ""
-        return (ts == "", ts, identity(obj))
-
     my_key = secret_key(license_param)
-    older = []
+
+    def on_secret(lic: Dict) -> bool:
+        return bool(lic.get("secretRef", {}).get("name")) and secret_key(lic) == my_key
+
+    def holds(obj: Dict) -> bool:
+        return on_secret(obj.get("status", {}).get("controlplane", {}).get("license") or {})
+
+    def claim_order(obj: Dict) -> tuple:
+        # Holders first, then the oldest (a missing creationTimestamp sorts
+        # last); namespace/name breaks ties.
+        ts = obj.get("metadata", {}).get("creationTimestamp") or ""
+        return (not holds(obj), ts == "", ts, identity(obj))
+
+    ahead = []
     for ctp in all_ctps:
         if identity(ctp) == identity(xr) or ctp.get("metadata", {}).get("deletionTimestamp"):
             continue
-        c_license = ctp.get("spec", {}).get("parameters", {}).get("license") or {}
-        if (c_license.get("secretRef", {}).get("name")
-                and secret_key(c_license) == my_key
-                and claim_order(ctp) < claim_order(xr)):
-            older.append(ctp)
-    return "/".join(identity(min(older, key=claim_order))) if older else ""
+        requested = ctp.get("spec", {}).get("parameters", {}).get("license") or {}
+        if (on_secret(requested) or holds(ctp)) and claim_order(ctp) < claim_order(xr):
+            ahead.append(ctp)
+    return "/".join(identity(min(ahead, key=claim_order))) if ahead else ""
 
 
 def extract_oidc_info(backup: Dict, observed: Dict) -> tuple:

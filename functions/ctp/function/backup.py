@@ -29,6 +29,15 @@ def add_backup_resources(rsp, id_val, location, bucket_region, provider_config,
     # selected by the network-id label. bucket_region defaults to the cluster
     # location but may differ for cross-region DR (an Azure resource may sit in
     # a different region than its resource group).
+    # StorageAccount and Container never include Delete. ObserveOnly makes no
+    # changes and Deprovision pushes no Update; Deprovision keeps Create like
+    # every other resource under it, so missing storage does not hold the XR
+    # off Ready.
+    storage_policies = {
+        "ObserveOnly": ["Observe"],
+        "Deprovision": ["Observe", "Create"],
+    }.get(config.get("management_mode"),
+          ["Observe", "Create", "Update", "LateInitialize"])
     storage_acct = {
         "apiVersion": "storage.azure.m.upbound.io/v1beta1",
         "kind": "Account",
@@ -41,7 +50,7 @@ def add_backup_resources(rsp, id_val, location, bucket_region, provider_config,
             }
         },
         "spec": {
-            "managementPolicies": ["Observe", "Create", "Update", "LateInitialize"],
+            "managementPolicies": storage_policies,
             "forProvider": {
                 "location": bucket_region,
                 "resourceGroupNameSelector": {
@@ -74,7 +83,7 @@ def add_backup_resources(rsp, id_val, location, bucket_region, provider_config,
             }
         },
         "spec": {
-            "managementPolicies": ["Observe", "Create", "Update", "LateInitialize"],
+            "managementPolicies": storage_policies,
             "forProvider": {
                 "storageAccountNameRef": {
                     "name": storage_account

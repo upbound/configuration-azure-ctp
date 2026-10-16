@@ -2,7 +2,7 @@
 # management cluster in the crossplane-system namespace. Each downstream
 # control plane needs its own license key; licenses may not be re-used across
 # UXP clusters:
-# https://docs.upbound.io/manuals/uxp/howtos/license-management/#kubectl
+# https://docs.upbound.io/manuals/uxp/howtos/license-management/#add-a-license
 #   kubectl create secret generic uxp-license-prod-control-plane \
 #     --from-file=license.json=<path-to-license.json> \
 #     -n crossplane-system
