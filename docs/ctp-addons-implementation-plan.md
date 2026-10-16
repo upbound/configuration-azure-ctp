@@ -46,7 +46,8 @@ Extend the `ControlPlane` composition so a child AKS cluster gets:
   `function/main.py` is the gRPC serving CLI, a separate file.)
 - XRD: `apis/ctp/definition.yaml`. Composition: `apis/ctp/composition.yaml`
   (pipeline: the Python `ctp` function, which requests all `ControlPlane`s as the
-  `allControlPlanes` required resources, then `function-auto-ready`).
+  `allControlPlanes` required resources when `license` is set or `k8gb` is
+  enabled, then `function-auto-ready`).
 - **Cloud params:** `spec.parameters.location` (Azure region, e.g. `eastus`);
   there is **no** `project`/`region` param. Cluster metadata is read from the
   composed **AKS XR** `status.aks.{oidcUrl, clusterName, nodes.vmSize}`

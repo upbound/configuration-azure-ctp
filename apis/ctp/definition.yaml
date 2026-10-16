@@ -164,7 +164,7 @@ spec:
                     properties:
                       secretRef:
                         type: object
-                        description: Reference to a Secret on the management cluster containing the UXP license JSON under the key "license".
+                        description: Reference to a Secret on the management cluster containing the UXP license JSON under the key "license.json".
                         properties:
                           name:
                             type: string
@@ -329,6 +329,22 @@ spec:
                       lastBackupTime:
                         description: Timestamp of the most recent scheduled backup run, sourced from BackupSchedule status.
                         type: string
+                  license:
+                    description: >-
+                      The license this ControlPlane installs. ControlPlanes sharing its Secret treat it
+                      as the holder - see the LicenseConflict condition.
+                    type: object
+                    properties:
+                      secretRef:
+                        description: The Secret the installed license is copied from.
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                            description: Name of the Secret holding the installed license JSON.
+                          namespace:
+                            type: string
+                            description: Namespace of the Secret.
                   resources:
                     description: Managed resource health summary across all composed resources.
                     type: object
