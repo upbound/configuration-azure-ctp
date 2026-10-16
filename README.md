@@ -183,7 +183,7 @@ node count / cluster type.
 cluster.**
 
 **Use a separate license key for every downstream control plane.** The
-[UXP license management docs](https://docs.upbound.io/manuals/uxp/howtos/license-management/#kubectl)
+[UXP license management docs](https://docs.upbound.io/manuals/uxp/howtos/license-management/#add-a-license)
 state: "You may not re-use licenses across multiple Upbound Crossplane
 clusters." Each `ControlPlane` XR creates its own downstream UXP cluster, so
 do not point two `ControlPlane` XRs at the same license Secret, and do not
@@ -208,11 +208,30 @@ spec:
         namespace: crossplane-system
 ```
 
-A `ControlPlane` whose license Secret an older `ControlPlane` already uses reports a
-`LicenseConflict` condition and gets no license. A license it already has installed is
-kept, from the Secret it was installed from, until the conflict is resolved. A `ControlPlane`
-being deleted holds no claim, and the condition message names the oldest other
-`ControlPlane` on the Secret.
+A `ControlPlane` whose license Secret another `ControlPlane` owns reports a
+`LicenseConflict` condition and gets no license. A license it already has installed is kept,
+from the Secret it was installed from, until the conflict is resolved.
+
+- The condition is in `status.controlplane.conditions`, not `status.conditions`. Its
+  message names the owner as `namespace/name`.
+- The owner is the `ControlPlane` holding the license, recorded in
+  `status.controlplane.license`. Among several holders, or with none, the oldest by
+  `metadata.creationTimestamp` owns it, with `namespace/name` breaking ties. A `ControlPlane`
+  being deleted holds no claim.
+- Two `ControlPlane`s reconciled at the same moment can both install the license before
+  either records its claim. The one that does not own the Secret then reports
+  `LicenseConflict` and keeps its license.
+- To resolve it, point the `ControlPlane` reporting the conflict at its own Secret.
+- Only references to the same Secret are detected: two Secrets holding the same license
+  JSON are not, and neither are AWS or GCP `ControlPlane`s on the same management
+  cluster, since only `azure.platform.upbound.io` `ControlPlane`s are compared.
+- `ControlPlane`s are compared across all namespaces, so the message can name one in
+  another namespace, and k8gb peers on the same `dnsZone` get each other's geo tags
+  across namespaces. This assumes a single-tenant management cluster.
+
+**Upgrading with `ControlPlane`s that share a Secret:** earlier releases never ran this
+check. After the upgrade every sharer but the oldest reports `LicenseConflict` and keeps
+its installed license; give each its own Secret and license to clear it.
 
 **Do NOT run `up uxp license apply <license.json>` on the management cluster**
 when the license is intended for a downstream control plane. That command
