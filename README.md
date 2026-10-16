@@ -506,10 +506,11 @@ Known caveats:
    for the next cron boundary before its first run. Manual `Backup` CRs
    work immediately but don't update the Schedule's `lastBackup`. See
    `../PORTING_NOTES.md` §4.5.
-2. **StorageAccount and Container** are emitted with
-   `managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]`
-   so backup data survives XR deletion. To delete those resources on XR
-   teardown, patch the MRs to `["*"]` before deleting the XR.
+2. **StorageAccount and Container** are emitted without `Delete`
+   (`["Observe", "Create", "Update", "LateInitialize"]`; `["Observe", "Create"]`
+   under `Deprovision`, `["Observe"]` under `ObserveOnly`) so backup data
+   survives XR deletion. To delete those resources on XR teardown, patch the
+   MRs to `["*"]` before deleting the XR.
 3. **Inner-cluster license** must be a non-`SingleNodeKind` license to
    activate enterprise features (backup execution, ProviderVPA,
    FunctionKnativeRuntime).
