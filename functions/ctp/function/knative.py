@@ -51,7 +51,10 @@ def add_knative_resources(rsp, id_val, knative_op_ready,
             # XR deletes) from managementPolicies stops the loop: provider-helm
             # creates the release on first reconcile, then only observes. To
             # bump the chart version, delete and recreate the Release MR.
-            "managementPolicies": ["Create", "Observe"],
+            # ObserveOnly installs nothing.
+            "managementPolicies": (
+                ["Observe"] if config.get("management_mode") == "ObserveOnly"
+                else ["Create", "Observe"]),
             "forProvider": {
                 "chart": {
                     "name": "knative-operator",

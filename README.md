@@ -183,7 +183,7 @@ node count / cluster type.
 cluster.**
 
 **Use a separate license key for every downstream control plane.** The
-[UXP license management docs](https://docs.upbound.io/manuals/uxp/howtos/license-management/#kubectl)
+[UXP license management docs](https://docs.upbound.io/manuals/uxp/howtos/license-management/#add-a-license)
 state: "You may not re-use licenses across multiple Upbound Crossplane
 clusters." Each `ControlPlane` XR creates its own downstream UXP cluster, so
 do not point two `ControlPlane` XRs at the same license Secret, and do not
@@ -208,11 +208,30 @@ spec:
         namespace: crossplane-system
 ```
 
-A `ControlPlane` whose license Secret an older `ControlPlane` already uses reports a
-`LicenseConflict` condition and gets no license. A license it already has installed is
-kept, from the Secret it was installed from, until the conflict is resolved. A `ControlPlane`
-being deleted holds no claim, and the condition message names the oldest other
-`ControlPlane` on the Secret.
+A `ControlPlane` whose license Secret another `ControlPlane` owns reports a
+`LicenseConflict` condition and gets no license. A license it already has installed is kept,
+from the Secret it was installed from, until the conflict is resolved.
+
+- The condition is in `status.controlplane.conditions`, not `status.conditions`. Its
+  message names the owner as `namespace/name`.
+- The owner is the `ControlPlane` holding the license, recorded in
+  `status.controlplane.license`. Among several holders, or with none, the oldest by
+  `metadata.creationTimestamp` owns it, with `namespace/name` breaking ties. A `ControlPlane`
+  being deleted holds no claim.
+- Two `ControlPlane`s reconciled at the same moment can both install the license before
+  either records its claim. The one that does not own the Secret then reports
+  `LicenseConflict` and keeps its license.
+- To resolve it, point the `ControlPlane` reporting the conflict at its own Secret.
+- Only references to the same Secret are detected: two Secrets holding the same license
+  JSON are not, and neither are AWS or GCP `ControlPlane`s on the same management
+  cluster, since only `azure.platform.upbound.io` `ControlPlane`s are compared.
+- `ControlPlane`s are compared across all namespaces, so the message can name one in
+  another namespace, and k8gb peers on the same `dnsZone` get each other's geo tags
+  across namespaces. This assumes a single-tenant management cluster.
+
+**Upgrading with `ControlPlane`s that share a Secret:** earlier releases never ran this
+check. After the upgrade every sharer but the oldest reports `LicenseConflict` and keeps
+its installed license; give each its own Secret and license to clear it.
 
 **Do NOT run `up uxp license apply <license.json>` on the management cluster**
 when the license is intended for a downstream control plane. That command
@@ -337,9 +356,23 @@ propagated. `glueAddresses` and `delegationRecord` are populated straight from
 the pinned `PublicIP`'s `status.atProvider.ipAddress`, not from the observed
 Service endpoint.
 
-The CoreDNS Service is **UDP-only** (`use_tcp: false` on the k8gb chart's
-CoreDNS zone) - DNS glue lookups are UDP, and Azure Standard LB does not accept
-a mixed TCP+UDP Service on the same port on older clusters.
+The CoreDNS Service serves **UDP and TCP :53** (`use_tcp: true` on the k8gb
+chart's CoreDNS zone), as k8gb requires. Mixed-protocol LoadBalancer Services
+are GA since Kubernetes 1.26; the Azure cloud provider creates one LB rule per
+port and protocol on the pinned Public IP.
+
+**Upgrading control planes with k8gb enabled:** earlier releases created the
+CoreDNS Service UDP-only, and the Helm upgrade cannot add TCP 53 to it: Service
+ports merge on `port`, so the TCP entry merges into the UDP one
+([kubernetes/kubernetes#105610](https://github.com/kubernetes/kubernetes/issues/105610)).
+Run once per existing child cluster after the upgrade:
+
+```bash
+kubectl -n k8gb patch svc k8gb-coredns --type=json \
+  -p '[{"op":"add","path":"/spec/ports/-","value":{"name":"tcp-5353","port":53,"protocol":"TCP","targetPort":5353}}]'
+```
+
+Later Helm upgrades then leave both ports in place.
 
 Attaching a reserved Public IP to a LoadBalancer Service is itself an Azure
 RBAC-guarded operation. The composition grants the AKS cluster's SystemAssigned
@@ -473,10 +506,11 @@ Known caveats:
    for the next cron boundary before its first run. Manual `Backup` CRs
    work immediately but don't update the Schedule's `lastBackup`. See
    `../PORTING_NOTES.md` §4.5.
-2. **StorageAccount and Container** are emitted with
-   `managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]`
-   so backup data survives XR deletion. To delete those resources on XR
-   teardown, patch the MRs to `["*"]` before deleting the XR.
+2. **StorageAccount and Container** are emitted without `Delete`
+   (`["Observe", "Create", "Update", "LateInitialize"]`; `["Observe", "Create"]`
+   under `Deprovision`, `["Observe"]` under `ObserveOnly`) so backup data
+   survives XR deletion. To delete those resources on XR teardown, patch the
+   MRs to `["*"]` before deleting the XR.
 3. **Inner-cluster license** must be a non-`SingleNodeKind` license to
    activate enterprise features (backup execution, ProviderVPA,
    FunctionKnativeRuntime).

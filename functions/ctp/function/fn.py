@@ -113,6 +113,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     license_param = params.get("license")
     management_mode = params.get("managementMode", "Full")
     mgmt_policies = _MODE_POLICIES.get(management_mode, _MODE_POLICIES["Full"])
+    config["management_mode"] = management_mode
     uxp_version = params.get("uxp", {}).get("version", "2.2.1-up.1")
     vpa = params.get("providerVerticalPodAutoscaling")
     knative = params.get("knative")
@@ -123,10 +124,12 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     argocd_enabled = bool(argocd) and argocd.get("enabled") == "yes"
 
     # Every ControlPlane in every namespace; Crossplane fetches them and re-runs
-    # the function. MatchLabels is set explicitly: require_resources drops an
-    # empty one, leaving the selector with no match criterion.
-    rsp.requirements.resources["allControlPlanes"].CopyFrom(fnv1.ResourceSelector(
-        api_version=xr["apiVersion"], kind=xr["kind"], match_labels=fnv1.MatchLabels()))
+    # the function, so only the license guard and k8gb peer discovery ask.
+    # MatchLabels is set explicitly: require_resources drops an empty one,
+    # leaving the selector with no match criterion.
+    if license_param or k8gb_enabled:
+        rsp.requirements.resources["allControlPlanes"].CopyFrom(fnv1.ResourceSelector(
+            api_version=xr["apiVersion"], kind=xr["kind"], match_labels=fnv1.MatchLabels()))
     all_ctps = request.get_required_resources(req, "allControlPlanes")
 
     license_conflict = check_license_conflict(xr, license_param, all_ctps)
@@ -229,10 +232,13 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                                        storage_account_id, config)
 
     # On conflict, keep a license already installed, from the Secret it was
-    # installed from; only a new claim is withheld.
+    # installed from; only a new claim is withheld. The composed license is
+    # written to status as this XR's claim.
     installed_license = get_installed_license(observed_resources) if license_conflict else None
+    license_claim = None
     if license_param and (not license_conflict or installed_license):
-        add_license_resources(rsp, id_val, installed_license or license_param, config)
+        license_claim = installed_license or license_param
+        add_license_resources(rsp, id_val, license_claim, config)
 
     if vpa and vpa.get("enabled") == "yes" and features_licensed:
         add_vpa_resources(rsp, id_val, vpa, vpa_ready, config)
@@ -252,7 +258,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     # and Azure MRs all carry spec.forProvider) inherits mgmt_policies, so
     # Provision/ObserveOnly never delete the provisioned control plane on
     # teardown. Resources with an explicit policy (backup storage, k8gb CoreDNS
-    # observe, knative serving) and composed XRs / Usage guards (no forProvider)
+    # observe, knative operator) and composed XRs / Usage guards (no forProvider)
     # are left untouched.
     for _name in list(rsp.desired.resources.keys()):
         _res = resource.struct_to_dict(rsp.desired.resources[_name].resource)
@@ -265,7 +271,8 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     update_status(rsp, id_val, params, uxp_version, uxp_deployed, backup,
                  client_id, backup.get("location", ""), observed_resources,
                  nodes, ng_actual_vm_size, ng_size_mismatch, cluster_name, vpa,
-                 knative, k8gb, k8gb_geo_tag, k8gb_public_ip, k8gb_deployed, license_conflict, config)
+                 knative, k8gb, k8gb_geo_tag, k8gb_public_ip, k8gb_deployed, license_conflict,
+                 license_claim, config)
 
 
 class FunctionRunner(grpcv1.FunctionRunnerService):
